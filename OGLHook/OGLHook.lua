@@ -177,6 +177,7 @@ setmetatable(OPENGL32, {__index=OGLHook_BaseFakeAccess})
 local OGLH_ADDR_NAME = OPENGL32_NAME .. '.wglSwapBuffers'
 OGL_HOOK = nil
 
+
 function getAddressSilent(address_str)
 	local prev_error_state = errorOnLookupFailure(false)
 
@@ -208,8 +209,6 @@ end
 
 
 local function OGLHook_InitMemory()
-	-- registerAutoAssemblerCommand('OGLH_WRITE_STACK', _OGLHook_WriteStack)
-
 	return autoAssemble([[
     	alloc(oglh_hook_code,2048)
     	alloc(oglh_window_hdc, 4)
@@ -299,16 +298,11 @@ end
 
 local function OGLHook_AfterUpdate()
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
-
-	OGLHook_RunExternalCmd([[
-		mov edi,edi
-		push ebp
-		mov ebp,esp
-	]])
+	OGLHook_RunExternalCmd(OGL_HOOK._orig_opcodes)
 end
 
 
-local function _get_self(...)
+local function _getSelf(...)
 	local self, _ = ...
 	if self == nil then
 		self = OGL_HOOK
@@ -319,7 +313,7 @@ end
 
 
 local function OGLHook_Update(...)
-	local self = _get_self(...)
+	local self = _getSelf(...)
 	if self == nil then
 		return
 	end
@@ -337,13 +331,39 @@ local function OGLHook_Update(...)
 end
 
 
+local function OGLHook_GetOpcodesText(address, size)
+	local start_address = type(address) == 'string' and getAddress(address) or address
+
+	local opcodes_len = 0
+	local result = ''
+
+	repeat
+		local current_opcode_size = getInstructionSize(start_address + opcodes_len)
+		if current_opcode_size == nil or current_opcode_size == 0 then
+			break
+		end
+
+		_, opcode_text, _ = splitDisassembledString(disassemble(start_address + opcodes_len))
+
+		if #result > 0 then
+			result = result .. '\r\n'
+		end
+		result = result .. opcode_text
+
+		opcodes_len = opcodes_len + current_opcode_size
+	until opcodes_len >= size
+
+	return result
+end
+
 local function OGLHook_Init(...)
-	local self = _get_self(...)
+	local self = _getSelf(...)
 	if self == nil then
 		return 0
 	end
-
+	
 	local error_exit_status = self._hot_inject and 0 or 1
+	self._orig_opcodes = OGLHook_GetOpcodesText(OGLH_ADDR_NAME, 5)
 
 	if not OGLHook_RewriteHook() then
 		return error_exit_status
@@ -361,7 +381,7 @@ end
 
 
 local function OGLHook_Destroy(...)
-	self = _get_self(...)
+	self = _getSelf(...)
 	if self == nil then
 		return
 	end
@@ -386,7 +406,7 @@ end
 -- Public --
 
 
-function OGLHook_Create(hot_inject, size, force)
+function OGLHook_Create(hot_inject, size)
 	reinitializeSymbolhandler()
 
 	local hook_address = getAddressSilent(OGLH_ADDR_NAME)
@@ -408,6 +428,8 @@ function OGLHook_Create(hot_inject, size, force)
 
 	OGL_HOOK = {
 		_hot_inject=(not not hot_inject),
+		_orig_opcodes=nil,
+
 		size=window_size,
 		update_funcs={},
 
