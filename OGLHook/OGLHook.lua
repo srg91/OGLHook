@@ -331,7 +331,6 @@ local function OGLHook_Update(...)
 	end
 
 	OGLHook_AfterUpdate()
-
 	OGLHook_Flush()
 
 	return OGLHook_RewriteBody()
@@ -367,6 +366,20 @@ local function OGLHook_Destroy(...)
 		return
 	end
 
+	local symbols = {
+		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context', 
+		'oglh_context', 'is_context_created'
+	}
+	local destroy_cmd = [[
+		dealloc(%s)
+		unregistersymbol(%s)
+	]]
+
+	for i, v in ipairs(symbols) do
+		if getAddressSilent(v) ~= 0 then
+			autoAssemble(string.format(v, v))
+		end
+	end
 end
 
 
@@ -381,16 +394,9 @@ function OGLHook_Create(hot_inject, size, force)
 		return -1
 	end
 
-	-- if force ~= true and OGL_HOOK ~= nil then
-	-- 	return OGL_HOOK
-	-- end
-	autoAssemble([[
-		unregistersymbol(oglh_hook_code)
-		unregistersymbol(oglh_window_hdc)
-		unregistersymbol(oglh_parent_context)
-		unregistersymbol(oglh_context)
-		unregistersymbol(is_context_created)
-	]])
+	if OGL_HOOK ~= nil then
+		OGL_HOOK:destroy()
+	end
 
 	if not OGLHook_InitMemory() then
 		return -2
@@ -409,7 +415,8 @@ function OGLHook_Create(hot_inject, size, force)
 		update = OGLHook_Update,
 		registerUpdateFunc = function(self, update_func)
 			table.insert(self.update_funcs, update_func)
-		end
+		end,
+		destroy = OGLHook_Destroy,
 	}
 
 	if hot_inject then

@@ -216,5 +216,5 @@ OPENGL32_CONSTS = {
 
 	GL_MODULATE = 0x2100,
 	GL_DECAL = 0x2101,
-	GL_ADD = 0x0104,                      
+	GL_ADD = 0x0104,
 }
