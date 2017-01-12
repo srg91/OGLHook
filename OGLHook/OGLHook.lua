@@ -1,8 +1,6 @@
 --[[
 Plugin for Cheat Engine what provide for you small interface to OpenGL
 
-version: 0.0.1
-
 tested with 
 	Cheat Engine 6.6
 by srg91
@@ -35,10 +33,10 @@ local function OGLHook_GetValueType(value, func_name)
 		end
 
 		local type_map = {
-			['[Ss]'] = 'int',
-			['[Ii]'] = 'int',
-			['[Ff]'] = 'float',
-			['[Dd]'] = 'double'
+			s = 'int',
+			i = 'int',
+			f = 'float',
+			d = 'double'
 		}
 
 		for k,v in pairs(type_map) do
@@ -310,12 +308,18 @@ local function OGLHook_AfterUpdate()
 end
 
 
-local function OGLHook_Update(...)
-	self = ...
+local function _get_self(...)
+	local self, _ = ...
 	if self == nil then
 		self = OGL_HOOK
 	end
 
+	return self, _
+end
+
+
+local function OGLHook_Update(...)
+	local self = _get_self(...)
 	if self == nil then
 		return
 	end
@@ -335,18 +339,41 @@ end
 
 
 local function OGLHook_Init(...)
-	if not OGLHook_RewriteHook() then
-		return false
+	local self = _get_self(...)
+	if self == nil then
+		return 0
 	end
 
-	return OGLHook_Update()
+	local error_exit_status = self._hot_inject and 0 or 1
+
+	if not OGLHook_RewriteHook() then
+		return error_exit_status
+	end
+
+	if not OGLHook_Update() then
+		return error_exit_status
+	end
+
+	if not self._hot_inject and self._hot_inject ~= 0 then
+		debug_removeBreakpoint(OGLH_ADDR_NAME)
+		return 0
+	end
+end
+
+
+local function OGLHook_Destroy(...)
+	self = _get_self(...)
+	if self == nil then
+		return
+	end
+
 end
 
 
 -- Public --
 
 
-function OGLHook_Create(size, force)
+function OGLHook_Create(hot_inject, size, force)
 	reinitializeSymbolhandler()
 
 	local hook_address = getAddressSilent(OGLH_ADDR_NAME)
@@ -374,6 +401,7 @@ function OGLHook_Create(size, force)
 	end
 
 	OGL_HOOK = {
+		_hot_inject=(not not hot_inject),
 		size=window_size,
 		update_funcs={},
 
@@ -384,9 +412,15 @@ function OGLHook_Create(size, force)
 		end
 	}
 
-	-- maybe it need to use manually
-	if not OGL_HOOK.init() then
-		return -3
+	if hot_inject then
+		if not OGL_HOOK.init() then
+			return -3
+		end
+	else
+		if not debug_isDebugging() then
+			debugProcess()
+		end
+		debug_setBreakpoint(hook_address, 0, bptExecute, OGL_HOOK.init)
 	end
 
 	return OGL_HOOK
