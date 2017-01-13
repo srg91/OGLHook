@@ -1,7 +1,7 @@
 --[[
 Plugin for Cheat Engine what provide for you small interface to OpenGL
 
-tested with 
+tested with
 	Cheat Engine 6.6
 by srg91
 ]]--
@@ -26,27 +26,29 @@ end
 
 
 local function OGLHook_GetValueType(value, func_name)
-	if func_name ~= nil and type(value) == 'number' then
+	if func_name ~= nil then
 		-- TODO: Fix this uhly hack with glOrtho
 		if string.find(func_name, 'glOrtho') ~= nil then
 			return 'double'
 		end
 
-		local type_map = {
-			s = 'int',
-			i = 'int',
-			f = 'float',
-			d = 'double'
-		}
+		if type(value) == 'number' then
+			local type_map = {
+				s = 'int',
+				i = 'int',
+				f = 'float',
+				d = 'double'
+			}
 
-		for k,v in pairs(type_map) do
-			local pattern = string.format('%%d%s$', k)
-			if string.match(func_name, pattern) then
-				return v
+			for k,v in pairs(type_map) do
+				local pattern = string.format('%%d%s$', k)
+				if string.match(func_name, pattern) then
+					return v
+				end
 			end
 		end
 	end
-	
+
 	if value == nil then
 		return
 	elseif type(value) == 'number' then
@@ -68,7 +70,9 @@ local function OGLHook_FormatPush(value, value_type)
 
 	local value_ph = '%s'
 	if value_type == 'double' or value_type == 'float' then
-		value_ph = '(float)%0.6f'
+		if type(value) == 'number' then
+			value_ph = '(float)%0.6f'
+		end
 	elseif value_type == 'int' then
 		value_ph = '%x'
 	end
@@ -215,12 +219,14 @@ local function OGLHook_InitMemory()
 		alloc(oglh_parent_context, 4)
 		alloc(oglh_context, 4)
 		alloc(is_context_created, 1)
+		alloc(oglh_window_rect, 16)
 
 		registersymbol(oglh_hook_code)
 		registersymbol(oglh_window_hdc)
 		registersymbol(oglh_parent_context)
 		registersymbol(oglh_context)
 		registersymbol(is_context_created)
+		registersymbol(oglh_window_rect)
 	]])
 end
 
@@ -283,8 +289,39 @@ local function OGLHook_BeforeUpdate()
 	OPENGL32.glMatrixMode(OPENGL32.GL_PROJECTION)
 	OPENGL32.glLoadIdentity()
 
-	local wx, wy, ww, wh = unpack(OGL_HOOK.size)
-	OPENGL32.glOrtho(wx, ww, wh, wy, 1.0, -1.0)
+	if type(OGL_HOOK.size) == 'table' then
+		local wx, wy, ww, wh = unpack(OGL_HOOK.size)
+		OPENGL32.glOrtho(wx, ww, wh, wy, 1.0, -1.0)
+	else
+		OGLHook_RunExternalCmd([[
+			push [oglh_window_hdc]
+			call WindowFromDC
+
+			push oglh_window_rect
+			push eax
+			call GetClientRect
+
+			fild [oglh_window_rect]
+			fstp dword ptr [oglh_window_rect]
+
+			fild [oglh_window_rect+4]
+			fstp dword ptr [oglh_window_rect+4]
+
+			fild [oglh_window_rect+8]
+			fstp dword ptr [oglh_window_rect+8]
+
+			fild [oglh_window_rect+c]
+			fstp dword ptr [oglh_window_rect+c]
+		]])
+
+		OPENGL32.glOrtho(
+			'[oglh_window_rect]',
+			'[oglh_window_rect+8]',
+			'[oglh_window_rect+c]',
+			'[oglh_window_rect+4]',
+			1.0, -1.0
+		)
+	end
 
 	OPENGL32.glMatrixMode(OPENGL32.GL_MODELVIEW)
 	OPENGL32.glLoadIdentity()
@@ -361,7 +398,7 @@ local function OGLHook_Init(...)
 	if self == nil then
 		return 0
 	end
-	
+
 	local error_exit_status = self._hot_inject and 0 or 1
 	self._orig_opcodes = OGLHook_GetOpcodesText(OGLH_ADDR_NAME, 5)
 
@@ -377,6 +414,8 @@ local function OGLHook_Init(...)
 		debug_removeBreakpoint(OGLH_ADDR_NAME)
 		return 0
 	end
+
+	return true
 end
 
 
@@ -387,8 +426,8 @@ local function OGLHook_Destroy(...)
 	end
 
 	local symbols = {
-		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context', 
-		'oglh_context', 'is_context_created'
+		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context',
+		'oglh_context', 'is_context_created', 'oglh_window_rect'
 	}
 	local destroy_cmd = [[
 		dealloc(%s)
@@ -422,15 +461,11 @@ function OGLHook_Create(hot_inject, size)
 		return -2
 	end
 
-	if window_size == nil then
-		window_size = {0, 0, 640, 480}
-	end
-
 	OGL_HOOK = {
 		_hot_inject=(not not hot_inject),
 		_orig_opcodes=nil,
 
-		size=window_size,
+		size=size,
 		update_funcs={},
 
 		init = OGLHook_Init,
