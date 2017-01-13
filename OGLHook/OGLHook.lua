@@ -15,6 +15,7 @@ local OPENGL32_DLL_NAME = OPENGL32_NAME .. 'DLL'
 -- local OPENGL32_RET_REGISTER = 'oglh_last_result'
 
 OPENGL32 = {}
+GLU32 = {}
 
 OPENGL32_COMMAND_STACK = {}
 OPENGL32_COMMAND_STACK_TEXT = ""
@@ -164,17 +165,20 @@ local function OGLHook_AccessMakeFakeFunc(t, k)
 	return OGLHook_FakeOpenGLFunc
 end
 
+local function OGLHook_BaseFakeAccess(consts_table)
+	local function inner(t, k)
+		if type(consts_table) == 'table' and string.upper(k) == k then
+			return consts_table[k]
+		end
 
-local function OGLHook_BaseFakeAccess(t, k)
-	-- Maybe not only OPENGL32.. But we can merge all constants i think
-	if string.upper(k) == k then
-		return OPENGL32_CONSTS[k]
+		return OGLHook_AccessMakeFakeFunc(t, k)
 	end
 
-	return OGLHook_AccessMakeFakeFunc(t, k)
+	return inner
 end
 
-setmetatable(OPENGL32, {__index=OGLHook_BaseFakeAccess})
+setmetatable(OPENGL32, {__index=OGLHook_BaseFakeAccess(OPENGL32_CONSTS)})
+setmetatable(GLU32, {__index=OGLHook_BaseFakeAccess(GLU32_CONSTS)})
 
 -- Private --
 
@@ -355,6 +359,10 @@ local function OGLHook_Update(...)
 		return
 	end
 
+	if not self.initialized then
+		return
+	end
+
 	OGLHook_BeforeUpdate()
 
 	for i,k in ipairs(self.update_funcs) do
@@ -369,7 +377,15 @@ end
 
 
 local function OGLHook_GetOpcodesText(address, size)
-	local start_address = type(address) == 'string' and getAddress(address) or address
+	local start_address
+
+	if type(address) == 'number' then
+		start_address = address
+	elseif type(address) == 'string' and getAddressSilent(address) ~= 0 then
+		start_address = getAddressSilent(address)
+	else
+		return
+	end
 
 	local opcodes_len = 0
 	local result = ''
@@ -401,6 +417,10 @@ local function OGLHook_Init(...)
 
 	local error_exit_status = self._hot_inject and 0 or 1
 	self._orig_opcodes = OGLHook_GetOpcodesText(OGLH_ADDR_NAME, 5)
+	self.initialized = true
+
+	OGLHook_RunExternalCmd(self._orig_opcodes)
+	OGLHook_Flush()
 
 	if not OGLHook_RewriteHook() then
 		return error_exit_status
@@ -422,6 +442,10 @@ end
 local function OGLHook_Destroy(...)
 	self = _getSelf(...)
 	if self == nil then
+		return
+	end
+
+	if not self.initialized then
 		return
 	end
 
@@ -464,6 +488,7 @@ function OGLHook_Create(hot_inject, size)
 	OGL_HOOK = {
 		_hot_inject=(not not hot_inject),
 		_orig_opcodes=nil,
+		initialized=false,
 
 		size=size,
 		update_funcs={},
@@ -477,7 +502,7 @@ function OGLHook_Create(hot_inject, size)
 	}
 
 	if hot_inject then
-		if not OGL_HOOK.init() then
+		if not OGL_HOOK:init() then
 			return -3
 		end
 	else
