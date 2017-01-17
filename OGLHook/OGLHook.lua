@@ -183,6 +183,7 @@ setmetatable(GLU32, {__index=OGLHook_BaseFakeAccess(GLU32_CONSTS)})
 -- Private --
 
 local OGLH_ADDR_NAME = OPENGL32_NAME .. '.wglSwapBuffers'
+local OGLH_USED_REGISTERS = {}
 OGL_HOOK = nil
 
 
@@ -201,6 +202,12 @@ function getAddressSilent(address_str)
 end
 
 
+local function _OGLHook_UseRegister(register)
+	if not OGLH_USED_REGISTERS[register] then
+		OGLH_USED_REGISTERS[register] = true
+	end
+end
+
 local function OGLHook_Flush()
 	local buffered_opcodes = ""
 
@@ -218,19 +225,14 @@ end
 
 local function OGLHook_InitMemory()
 	return autoAssemble([[
-    	alloc(oglh_hook_code,2048)
-    	alloc(oglh_window_hdc, 4)
-		alloc(oglh_parent_context, 4)
-		alloc(oglh_context, 4)
-		alloc(is_context_created, 1)
-		alloc(oglh_window_rect, 16)
-
-		registersymbol(oglh_hook_code)
-		registersymbol(oglh_window_hdc)
-		registersymbol(oglh_parent_context)
-		registersymbol(oglh_context)
-		registersymbol(is_context_created)
-		registersymbol(oglh_window_rect)
+    	globalalloc(oglh_hook_code,16384)
+    	globalalloc(oglh_window_hdc, 4)
+		globalalloc(oglh_parent_context, 4)
+		globalalloc(oglh_context, 4)
+		globalalloc(is_context_created, 1)
+		globalalloc(oglh_window_rect, 16)
+		globalalloc(oglh_image_handle, 4)
+		globalalloc(oglh_image_ptr, 4)
 	]])
 end
 
@@ -293,8 +295,8 @@ local function OGLHook_BeforeUpdate()
 	OPENGL32.glMatrixMode(OPENGL32.GL_PROJECTION)
 	OPENGL32.glLoadIdentity()
 
-	if type(OGL_HOOK.size) == 'table' then
-		local wx, wy, ww, wh = unpack(OGL_HOOK.size)
+	if type(OGL_HOOK.window_size) == 'table' then
+		local wx, wy, ww, wh = unpack(OGL_HOOK.window_size)
 		OPENGL32.glOrtho(wx, ww, wh, wy, 1.0, -1.0)
 	else
 		OGLHook_RunExternalCmd([[
@@ -451,8 +453,14 @@ local function OGLHook_Destroy(...)
 
 	local symbols = {
 		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context',
-		'oglh_context', 'is_context_created', 'oglh_window_rect'
+		'oglh_context', 'is_context_created', 'oglh_window_rect',
+		'oglh_image_handle', 'oglh_image_ptr'
 	}
+
+	for k, v in pairs(OGLH_USED_REGISTERS) do
+		table.insert(symbols, k)
+	end
+
 	local destroy_cmd = [[
 		dealloc(%s)
 		unregistersymbol(%s)
@@ -468,8 +476,57 @@ end
 
 -- Public --
 
+function OGLHook_LoadBMPTexture(file_path, texture_reg)
+	-- TODO: Add load image with non-ascii symbols in path
+	local texture_file_path = string.format('oglh_%s_file_path', texture_reg)
 
-function OGLHook_Create(hot_inject, size)
+	_OGLHook_UseRegister(texture_file_path)
+	_OGLHook_UseRegister(texture_reg)
+
+	OGLHook_RunExternalCmd(string.format([[
+		cmp dword ptr [%s],0
+		jne @f
+	]], texture_reg))
+
+
+	autoAssemble(string.format([[
+		globalalloc(%s, 4)
+		globalalloc(%s, 1024)
+
+		%s:
+		db '%s',0
+	]], texture_reg, texture_file_path, texture_file_path, file_path))
+
+	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
+
+	OGLHook_RunExternalCmd(
+		'call LoadImageA',
+		{0, texture_file_path, 0, 0, 0, (0x00002000 | 0x00000010)},
+		'oglh_image_handle'
+	)
+
+	OGLHook_RunExternalCmd(
+		'call GetObjectA',
+		{'[oglh_image_handle]', 24, 'oglh_image_ptr'}
+	)
+
+	OPENGL32.glGenTextures(1, texture_reg)
+	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture_reg)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MIN_FILTER, OPENGL32.GL_NEAREST)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MAG_FILTER, OPENGL32.GL_NEAREST)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_S, OPENGL32.GL_REPEAT)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_T, OPENGL32.GL_REPEAT)
+	OPENGL32.glTexImage2D(OPENGL32.GL_TEXTURE_2D, 0, OPENGL32.GL_RGB, '[oglh_image_ptr+4]', '[oglh_image_ptr+8]', 0, OPENGL32.GL_BGR_EXT, OPENGL32.GL_UNSIGNED_BYTE, '[oglh_image_ptr+14]')
+
+	OGLHook_RunExternalCmd('call DeleteObject', '[oglh_image_handle]')
+
+	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+
+	OGLHook_PutLabel('@@')
+end
+
+
+function OGLHook_Create(hot_inject, window_size)
 	reinitializeSymbolhandler()
 
 	local hook_address = getAddressSilent(OGLH_ADDR_NAME)
@@ -479,6 +536,7 @@ function OGLHook_Create(hot_inject, size)
 
 	if OGL_HOOK ~= nil then
 		OGL_HOOK:destroy()
+		OGLH_USED_REGISTERS = {}
 	end
 
 	if not OGLHook_InitMemory() then
@@ -490,7 +548,7 @@ function OGLHook_Create(hot_inject, size)
 		_orig_opcodes=nil,
 		initialized=false,
 
-		size=size,
+		window_size=window_size,
 		update_funcs={},
 
 		init = OGLHook_Init,
