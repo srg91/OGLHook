@@ -14,15 +14,21 @@ local OPENGL32_NAME = 'OPENGL32'
 local OPENGL32_DLL_NAME = OPENGL32_NAME .. 'DLL'
 -- local OPENGL32_RET_REGISTER = 'oglh_last_result'
 
-OPENGL32 = {}
-GLU32 = {}
+OPENGL32 = {_dll_name='OPENGL32'}
+GLU32 = {_dll_name='GLU32'}
 
 OPENGL32_COMMAND_STACK = {}
 OPENGL32_COMMAND_STACK_TEXT = ""
 
 
-local function OGLHook_MakeCall(func_name)
-	return string.format('call %s.%s', OPENGL32_NAME, func_name)
+local function OGLHook_MakeCall(func_name, namespace)
+	local call_function = func_name
+
+	if namespace ~= nil then
+		call_function = string.format('%s.%s', namespace, call_function)
+	end
+
+	return 'call ' .. call_function
 end
 
 
@@ -33,7 +39,23 @@ local function OGLHook_GetValueType(value, func_name)
 			return 'double'
 		end
 
+		if string.find(func_name, 'gluPerspective') ~= nil then
+			return 'double'
+		end
+
+		if string.find(func_name, 'glClearDepth') ~= nil then
+			return 'double'
+		end
+
 		if type(value) == 'number' then
+			if string.find(func_name, 'glRotatef') ~= nil then
+				return 'float'
+			end
+
+			if string.find(func_name, 'glTranslatef') ~= nil then
+				return 'float'
+			end
+
 			local type_map = {
 				s = 'int',
 				i = 'int',
@@ -139,7 +161,7 @@ end
 
 local function OGLHook_AccessMakeFakeFunc(t, k)
 	function OGLHook_FakeOpenGLFunc(...)
-		local command = OGLHook_MakeCall(k)
+		local command = OGLHook_MakeCall(k, t._dll_name)
 
 		local args = {}
 		local rregs = {}
@@ -230,7 +252,7 @@ local function OGLHook_InitMemory()
 		globalalloc(oglh_parent_context, 4)
 		globalalloc(oglh_context, 4)
 		globalalloc(is_context_created, 1)
-		globalalloc(oglh_window_rect, 16)
+		globalalloc(oglh_window_rect, 20)
 		globalalloc(oglh_image_handle, 4)
 		globalalloc(oglh_image_ptr, 4)
 	]])
@@ -268,6 +290,34 @@ local function OGLHook_RewriteBody()
 end
 
 
+function OGLHook_UpdateWindowSize()
+	OGLHook_RunExternalCmd([[
+		push [oglh_window_hdc]
+		call WindowFromDC
+
+		push oglh_window_rect
+		push eax
+		call GetClientRect
+
+		fild [oglh_window_rect]
+		fstp dword ptr [oglh_window_rect]
+
+		fild [oglh_window_rect+4]
+		fstp dword ptr [oglh_window_rect+4]
+
+		fild [oglh_window_rect+8]
+		fstp dword ptr [oglh_window_rect+8]
+
+		fild [oglh_window_rect+c]
+		fstp dword ptr [oglh_window_rect+c]
+
+		fld [oglh_window_rect+8]
+		fld [oglh_window_rect+c]
+		fdivp
+		fstp [oglh_window_rect+10]
+	]])
+end
+
 local function OGLHook_BeforeUpdate()
 	OGLHook_RunExternalCmd([[
 		label(initialized)
@@ -292,47 +342,12 @@ local function OGLHook_BeforeUpdate()
 	OGLHook_PutLabel('initialization')
 	OGLHook_RunExternalCmd('mov [is_context_created],#1')
 
-	OPENGL32.glMatrixMode(OPENGL32.GL_PROJECTION)
-	OPENGL32.glLoadIdentity()
+	OGLHook_UpdateWindowSize()
 
-	if type(OGL_HOOK.window_size) == 'table' then
-		local wx, wy, ww, wh = unpack(OGL_HOOK.window_size)
-		OPENGL32.glOrtho(wx, ww, wh, wy, 1.0, -1.0)
-	else
-		OGLHook_RunExternalCmd([[
-			push [oglh_window_hdc]
-			call WindowFromDC
-
-			push oglh_window_rect
-			push eax
-			call GetClientRect
-
-			fild [oglh_window_rect]
-			fstp dword ptr [oglh_window_rect]
-
-			fild [oglh_window_rect+4]
-			fstp dword ptr [oglh_window_rect+4]
-
-			fild [oglh_window_rect+8]
-			fstp dword ptr [oglh_window_rect+8]
-
-			fild [oglh_window_rect+c]
-			fstp dword ptr [oglh_window_rect+c]
-		]])
-
-		OPENGL32.glOrtho(
-			'[oglh_window_rect]',
-			'[oglh_window_rect+8]',
-			'[oglh_window_rect+c]',
-			'[oglh_window_rect+4]',
-			1.0, -1.0
-		)
+	local is_context_created = readBytes(getAddress('is_context_created'), 1, false)
+	if is_context_created ~= 1 and type(OGL_HOOK.onInit) == 'function' then
+		OGL_HOOK:onInit()
 	end
-
-	OPENGL32.glMatrixMode(OPENGL32.GL_MODELVIEW)
-	OPENGL32.glLoadIdentity()
-
-	OPENGL32.glClearColor(0, 0, 0, 1)
 
 	OGLHook_PutLabel('initialized')
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
@@ -476,6 +491,51 @@ end
 
 -- Public --
 
+
+function OGLHook_SimpleOrtho(x, y, width, height, znear, zfar)
+	local x = x or '[oglh_window_rect]'
+	local y = y or '[oglh_window_rect+4]'
+	local width = width or '[oglh_window_rect+8]'
+	local height = height or '[oglh_window_rect+c]'
+	local znear = znear or 1.0
+	local zfar = zfar or -1.0
+
+	OPENGL32.glMatrixMode(OPENGL32.GL_PROJECTION)
+	OPENGL32.glLoadIdentity()
+
+	OPENGL32.glOrtho(x, width, height, y, znear, zfar)
+
+	OPENGL32.glMatrixMode(OPENGL32.GL_MODELVIEW)
+	OPENGL32.glLoadIdentity()
+
+	OPENGL32.glClearColor(0, 0, 0, 1)
+end
+
+
+function OGLHook_SimplePerspective(fov, aspect_ratio, znear, zfar)
+	local fov = fov or 45
+	local aspect_ratio = aspect_ratio or '[oglh_window_rect+10]'
+	local znear = znear or 0.1
+	local zfar = zfar or 100
+
+	OPENGL32.glMatrixMode(OPENGL32.GL_PROJECTION)
+	OPENGL32.glLoadIdentity()
+
+	GLU32.gluPerspective(fov, aspect_ratio, znear, zfar)
+
+	OPENGL32.glMatrixMode(OPENGL32.GL_MODELVIEW)
+	OPENGL32.glLoadIdentity()
+
+	OPENGL32.glClearColor(0, 0, 0, 1)
+
+	OPENGL32.glShadeModel(OPENGL32.GL_SMOOTH)
+	OPENGL32.glClearDepth('(float)1')
+	OPENGL32.glEnable(OPENGL32.GL_DEPTH_TEST)
+	OPENGL32.glDepthFunc(OPENGL32.GL_LEQUAL)
+	OPENGL32.glHint(OPENGL32.GL_PERSPECTIVE_CORRECTION_HINT, OPENGL32.GL_NICEST)
+end
+
+
 function OGLHook_LoadBMPTexture(file_path, texture_reg)
 	-- TODO: Add load image with non-ascii symbols in path
 	local texture_file_path = string.format('oglh_%s_file_path', texture_reg)
@@ -526,7 +586,7 @@ function OGLHook_LoadBMPTexture(file_path, texture_reg)
 end
 
 
-function OGLHook_Create(hot_inject, window_size)
+function OGLHook_Create(hot_inject, onInit)
 	reinitializeSymbolhandler()
 
 	local hook_address = getAddressSilent(OGLH_ADDR_NAME)
@@ -548,10 +608,10 @@ function OGLHook_Create(hot_inject, window_size)
 		_orig_opcodes=nil,
 		initialized=false,
 
-		window_size=window_size,
 		update_funcs={},
 
 		init = OGLHook_Init,
+		onInit = onInit,
 		update = OGLHook_Update,
 		registerUpdateFunc = function(self, update_func)
 			table.insert(self.update_funcs, update_func)
