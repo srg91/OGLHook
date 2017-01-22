@@ -1,6 +1,10 @@
 -- https://github.com/duncanspumpkin/NeHeNASM
+if OGLHook_Const ~= nil then
+	return
+end
 
-OPENGL32_CONSTS = {
+
+local OPENGL32_CONSTS = {
 	GL_VERSION_1_1 = 1,
 	GL_EXT_abgr = 1,
 	GL_EXT_bgra = 1,
@@ -788,7 +792,7 @@ OPENGL32_CONSTS = {
 	GL_INDEX_MATERIAL_FACE_SGI = 0x81ba,
 }
 
-GLU32_CONSTS = {
+local GLU32_CONSTS = {
 	GLU_EXT_object_space_tess = 1,
 	GLU_EXT_nurbs_tessellator = 1,
 
@@ -964,4 +968,10 @@ GLU32_CONSTS = {
 	GLU_TESS_WINDING_POSITIVE = 100132,
 	GLU_TESS_WINDING_NEGATIVE = 100133,
 	GLU_TESS_WINDING_ABS_GEQ_TWO = 100134,
+}
+
+
+OGLHook_Const = {
+	OPENGL32 = OPENGL32_CONSTS,
+	GLU32 = GLU32_CONSTS,
 }
