@@ -154,7 +154,7 @@ OGLHook_Commands.Flush = function ()
 	local buffered_opcodes = ""
 
 	for idx = 1,#OGLHook_Commands.commands_stack do
-		current_opcode = OGLHook_Commands.commands_stack[idx]
+		local current_opcode = OGLHook_Commands.commands_stack[idx]
 		buffered_opcodes = buffered_opcodes .. '\r\n' .. current_opcode
 	end
 

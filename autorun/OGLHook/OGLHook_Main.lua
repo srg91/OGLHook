@@ -9,13 +9,9 @@ by srg91
 require([[autorun\OGLHook\OGLHook_Const]])
 require([[autorun\OGLHook\OGLHook_Utils]])
 require([[autorun\OGLHook\OGLHook_Commands]])
--- OpenGL --
-
-local OPENGL32_NAME = 'OPENGL32'
-local OPENGL32_DLL_NAME = OPENGL32_NAME .. 'DLL'
--- local OPENGL32_RET_REGISTER = 'oglh_last_result'
 
 -- Private --
+local OPENGL32_NAME = 'OPENGL32'
 local OGLH_ADDR_NAME = OPENGL32_NAME .. '.wglSwapBuffers'
 OGL_HOOK = nil
 
@@ -26,7 +22,7 @@ local function OGLHook_InitMemory()
     	globalalloc(oglh_window_hdc, 4)
 		globalalloc(oglh_parent_context, 4)
 		globalalloc(oglh_context, 4)
-		globalalloc(is_context_created, 1)
+		globalalloc(oglh_initialized, 1)
 		globalalloc(oglh_window_rect, 20)
 		globalalloc(oglh_image_handle, 4)
 		globalalloc(oglh_image_ptr, 4)
@@ -106,25 +102,10 @@ local function OGLHook_BeforeUpdate()
 
 	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
 
-	OGLHook_Commands.RunExternalCmd([[
-		cmp [is_context_created], 0
-		jnz initialized
-	]])
-
-	OPENGL32.wglCreateContext('[oglh_window_hdc]', '->', 'oglh_context')
-	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
-
-	OGLHook_Commands.PutLabel('initialization')
-	OGLHook_Commands.RunExternalCmd('mov [is_context_created],#1')
-
-	OGLHook_UpdateWindowSize()
-
-	local is_context_created = readBytes(getAddress('is_context_created'), 1, false)
-	if is_context_created ~= 1 and type(OGL_HOOK.onInit) == 'function' then
-		OGL_HOOK:onInit()
+	if OGL_HOOK._initialization_part ~= nil then
+		OGLHook_Commands.RunExternalCmd(OGL_HOOK._initialization_part)
 	end
 
-	OGLHook_Commands.PutLabel('initialized')
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 end
 
@@ -151,7 +132,7 @@ local function OGLHook_Update(...)
 		return
 	end
 
-	if not self.initialized then
+	if self._orig_opcodes == nil then
 		return
 	end
 
@@ -188,7 +169,7 @@ local function OGLHook_GetOpcodesText(address, size)
 			break
 		end
 
-		_, opcode_text, _ = splitDisassembledString(disassemble(start_address + opcodes_len))
+		local _, opcode_text, _ = splitDisassembledString(disassemble(start_address + opcodes_len))
 
 		if #result > 0 then
 			result = result .. '\r\n'
@@ -210,7 +191,6 @@ local function OGLHook_Init(...)
 
 	local error_exit_status = self._hot_inject and 0 or 1
 	self._orig_opcodes = OGLHook_GetOpcodesText(OGLH_ADDR_NAME, 5)
-	self.initialized = true
 
 	OGLHook_Commands.RunExternalCmd(self._orig_opcodes)
 	OGLHook_Commands.Flush()
@@ -218,6 +198,26 @@ local function OGLHook_Init(...)
 	if not OGLHook_RewriteHook() then
 		return error_exit_status
 	end
+
+	OGLHook_Commands.RunExternalCmd([[
+		cmp [oglh_initialized], 0
+		jnz initialized
+	]])
+
+	OPENGL32.wglCreateContext('[oglh_window_hdc]', '->', 'oglh_context')
+	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
+
+	OGLHook_Commands.PutLabel('initialization')
+	OGLHook_Commands.RunExternalCmd('mov [oglh_initialized],#1')
+
+	OGLHook_UpdateWindowSize()
+
+	if type(OGL_HOOK.onInit) == 'function' then
+		OGL_HOOK:onInit()
+	end
+
+	OGLHook_Commands.PutLabel('initialized')
+	self._initialization_part = OGLHook_Commands.Flush()
 
 	if not OGLHook_Update() then
 		return error_exit_status
@@ -233,18 +233,14 @@ end
 
 
 local function OGLHook_Destroy(...)
-	self = _getSelf(...)
+	local self = _getSelf(...)
 	if self == nil then
-		return
-	end
-
-	if not self.initialized then
 		return
 	end
 
 	local symbols = {
 		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context',
-		'oglh_context', 'is_context_created', 'oglh_window_rect',
+		'oglh_context', 'oglh_initialized', 'oglh_window_rect',
 		'oglh_image_handle', 'oglh_image_ptr'
 	}
 
@@ -255,7 +251,7 @@ local function OGLHook_Destroy(...)
 
 	for i, v in ipairs(symbols) do
 		if OGLHook_Utils.getAddressSilent(v) ~= 0 then
-			autoAssemble(string.format(v, v))
+			autoAssemble(string.format(destroy_cmd, v, v))
 		end
 	end
 
@@ -318,7 +314,6 @@ function OGLHook_Create(hot_inject, onInit)
 
 	if OGL_HOOK ~= nil then
 		OGL_HOOK:destroy()
-		-- OGLH_USED_REGISTERS = {}
 	end
 
 	if not OGLHook_InitMemory() then
@@ -328,7 +323,7 @@ function OGLHook_Create(hot_inject, onInit)
 	OGL_HOOK = {
 		_hot_inject=(not not hot_inject),
 		_orig_opcodes=nil,
-		initialized=false,
+		_initialization_part=nil,
 
 		update_funcs={},
 
