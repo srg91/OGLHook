@@ -214,6 +214,8 @@ local function OGLHook_Init(...)
 
 	if type(OGL_HOOK.onInit) == 'function' then
 		OGL_HOOK:onInit()
+	else
+		OGLHook_SimpleOrtho()
 	end
 
 	OGLHook_Commands.PutLabel('initialized')

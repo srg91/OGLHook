@@ -56,6 +56,12 @@ OGLHook_Textures.InitLoadTextures = function()
 		OGLHook_Utils.AllocateRegister(decoder_label, 16, decoder_opcodes)
 	end
 
+	if OGLHook_Utils.getAddressSilent('combase.dll') ~= 0 then
+		OGLHook_Textures._com_dll = 'combase'
+	else
+		OGLHook_Textures._com_dll = 'ole32'
+	end
+
 	OGLHook_Textures._InitCreateStreamFromMemoryFunc()
 	OGLHook_Textures._InitLoadBitmapFromStream()
 	OGLHook_Textures._InitCreateHBITMAP()
@@ -77,11 +83,7 @@ OGLHook_Textures._InitCreateStreamFromMemoryFunc = function()
 	local func_text = [[
 		label(return)
 
-		// push ebp
-		// mov ebp, esp
-
 		mov eax,[esp+4]
-		//mov eax,[eax]
 		mov [oglh_pvSourceResourceData],eax
 
 		mov eax,[esp+8]
@@ -116,13 +118,11 @@ OGLHook_Textures._InitCreateStreamFromMemoryFunc = function()
 		push oglh_ipStream
 		push 1
 		push [oglh_hgblResourceData]
-		call combase.CreateStreamOnHGlobal
+		call ]] .. OGLHook_Textures._com_dll .. [[.CreateStreamOnHGlobal
 
 		return:
 		mov eax, [oglh_ipStream]
 
-		// mov esp, ebp
-		// pop ebp
 		ret 8
 	]]
 
@@ -139,7 +139,7 @@ OGLHook_Textures._InitLoadBitmapFromStream = function ()
 	OGLHook_Utils.AllocateRegister('oglh_current_decoder', 4)
 
 	local co_initialize
-	if OGLHook_Utils.getAddressSilent('combase.CoInitializeEx') ~= 0 then
+	if OGLHook_Textures._com_dll == 'combase' then
 		co_initialize = [[
 			push 0
 			push 0
@@ -156,9 +156,6 @@ OGLHook_Textures._InitLoadBitmapFromStream = function ()
 		label(release_decoder)
 		label(return)
 
-		// push ebp
-		// mov ebp, esp
-
 		mov eax,[esp+4]
 		mov eax,[eax]
 		mov [oglh_ipStream],eax
@@ -169,14 +166,14 @@ OGLHook_Textures._InitLoadBitmapFromStream = function ()
 
 		mov [oglh_ipBitmap],0
 
-	]] .. co_initialize .. [[
+		]] .. co_initialize .. [[
 
 		push oglh_ipDecoder
 		push OGLH_GUID_IWICBitmapDecoder
 		push 1
 		push 0
 		push [oglh_current_decoder]
-		call combase.CoCreateInstance
+		call ]] .. OGLHook_Textures._com_dll .. [[.CoCreateInstance
 
 		cmp eax,0
 		jne return
@@ -245,8 +242,6 @@ OGLHook_Textures._InitLoadBitmapFromStream = function ()
 		return:
 		mov eax,[oglh_ipBitmap]
 
-		// mov esp,ebp
-		// pop ebp
 		ret 8
 	]]
 
@@ -267,9 +262,6 @@ OGLHook_Textures._InitCreateHBITMAP = function ()
 
 	local func_text = [[
 		label(return)
-
-		// push ebp
-		// mov ebp, esp
 
 		mov eax,[esp+4]
 		mov eax,[eax]
@@ -354,8 +346,6 @@ OGLHook_Textures._InitCreateHBITMAP = function ()
 		return:
 		mov eax,[oglh_HBITMAP]
 
-		// mov esp,ebp
-		// pop ebp
 		ret 4
 	]]
 	OGLHook_Utils.AllocateRegister('OGLH_CreateHBITMAP', 2048, func_text)
