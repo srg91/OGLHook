@@ -11,9 +11,9 @@ OGLHook_Textures = {
 	_image_decoder_lbl_template = 'oglh_image_decoder_%d',
 }
 
-require([[autorun\OGLHook\OGLHook_Utils]])
-require([[autorun\OGLHook\OGLHook_Errors]])
-require([[autorun\OGLHook\OGLHook_Commands]])
+require([[autorun\OGLHook\Utils]])
+require([[autorun\OGLHook\Errors]])
+require([[autorun\OGLHook\Commands]])
 
 
 OGLHook_Textures.InitLoadTextures = function()

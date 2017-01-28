@@ -6,9 +6,9 @@ tested with
 by srg91
 ]]--
 
-require([[autorun\OGLHook\OGLHook_Const]])
-require([[autorun\OGLHook\OGLHook_Utils]])
-require([[autorun\OGLHook\OGLHook_Commands]])
+require([[autorun\OGLHook\Const]])
+require([[autorun\OGLHook\Utils]])
+require([[autorun\OGLHook\Commands]])
 
 -- Private --
 local OPENGL32_NAME = 'OPENGL32'

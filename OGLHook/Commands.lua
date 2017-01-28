@@ -7,7 +7,7 @@ OGLHook_Commands = {
 	commands_stack_text = '',
 }
 
-require([[autorun\OGLHook\OGLHook_Const]])
+require([[autorun\OGLHook\Const]])
 
 OPENGL32 = {_dll_name='OPENGL32'}
 GLU32 = {_dll_name='GLU32'}
