@@ -221,6 +221,7 @@ OGLHook_Fonts.createTextContainer = function (font_map, x, y, text)
 		x=x,
 		y=y,
 		visible=true,
+		color=font_map.color,
 		alpha=1.0,
 		text=nil,
 		setText = function(self, text_)
@@ -252,9 +253,11 @@ OGLHook_Fonts.renderTextContainer = function (text_container)
 
 	local dword_count = 4*#text_container.text
 	
-	OPENGL32.glPushMatrix()
+	OPENGL32.glPushMatrix()	
 
-	OPENGL32.glColor4f(1.0, 1.0, 1.0, text_container.alpha)
+	local cr, cg, cb = text_container.color & 0x0000ff, text_container.color & 0x00ff00, text_container.color & 0xff0000
+
+	OPENGL32.glColor4f(cr / 255, cg / 255, cb / 255, text_container.alpha)
 	OPENGL32.glTranslatef(text_container.x, text_container.y, 0)
 	
 	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, text_container.font_map.texture.register)
