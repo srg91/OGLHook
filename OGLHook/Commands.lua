@@ -53,7 +53,7 @@ OGLHook_Commands.SyncRun = function (func_text, timeout)
 		-- 	OGLHook_Commands._SyncWait()
 		-- end
 		OGLHook_Utils.DeallocateRegister(flag_label)
-		debug = false
+		debug = true
 		COUNTER = COUNTER +1
 	end
 
@@ -76,7 +76,7 @@ OGLHook_Commands.SyncRun = function (func_text, timeout)
 
 	writeBytes(flag_addr, 1)
 	if OGLHook_Utils.AllocateRegister(run_label, 16384, run_text) then
-		if debug  and COUNTER >= 3 then
+		if debug and COUNTER >= 3 then
 			debug_setBreakpoint(run_label, 0, bptExecute)
 			autoAssemble(string.format('createthread(%s)', run_label))
 		else
@@ -86,6 +86,7 @@ OGLHook_Commands.SyncRun = function (func_text, timeout)
 
 		return true
 	else
+		writeBytes(flag_addr, 0)
 		return false
 	end
 end

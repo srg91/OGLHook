@@ -272,31 +272,22 @@ end
 local function OGLHook_Init(...)
 	local self = _getSelf(...)
 	if self == nil then
-		return 0
+		return false
 	end
 
-	local error_exit_status = self._hot_inject and 0 or 1
 	self._orig_opcodes = OGLHook_GetOpcodesText(OGLH_ADDR_NAME, 5)
 
 	OGLHook_Commands.RunExternalCmd(self._orig_opcodes)
 	OGLHook_Commands.Flush()
 
 	if not OGLHook_RewriteHook() then
-		return error_exit_status
+		return false
 	end
 
 	OGLHook_Commands.RunExternalCmd([[
 		cmp [oglh_initialized], 0
 		jnz initialized
 	]])
-
-	-- OGLHook_Commands.RunExternalCmd([[
-	-- 	push 0
-	-- 	call GetDC
-	-- 	push eax
-	-- ]])
-
-	-- OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
 
 	OLGHook_CreteFakeWindow()
 
@@ -308,7 +299,6 @@ local function OGLHook_Init(...)
 
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 
---	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 
 	OGLHook_Commands.PutLabel('initialization')
 	OGLHook_Commands.RunExternalCmd('mov [oglh_initialized],#1')
@@ -325,12 +315,7 @@ local function OGLHook_Init(...)
 	self._initialization_part = OGLHook_Commands.Flush()
 
 	if not OGLHook_Update() then
-		return error_exit_status
-	end
-
-	if not self._hot_inject and self._hot_inject ~= 0 then
-		debug_removeBreakpoint(OGLH_ADDR_NAME)
-		return 0
+		return false
 	end
 
 	return true
@@ -409,7 +394,7 @@ function OGLHook_SimplePerspective(fov, aspect_ratio, znear, zfar)
 end
 
 
-function OGLHook_Create(hot_inject, onInit)
+function OGLHook_Create(onInit)
 	reinitializeSymbolhandler()
 
 	local hook_address = OGLHook_Utils.getAddressSilent(OGLH_ADDR_NAME)
@@ -426,7 +411,6 @@ function OGLHook_Create(hot_inject, onInit)
 	end
 
 	OGL_HOOK = {
-		_hot_inject=(not not hot_inject),
 		_orig_opcodes=nil,
 		_initialization_part=nil,
 
@@ -441,17 +425,12 @@ function OGLHook_Create(hot_inject, onInit)
 		destroy = OGLHook_Destroy,
 	}
 
-	if hot_inject then
-		if not OGL_HOOK:init() then
-			return -3
-		end
-	else
-		OGLHook_Textures.InitLoadTextures()
-		if not debug_isDebugging() then
-			debugProcess()
-		end
-		debug_setBreakpoint(hook_address, 0, bptExecute, OGL_HOOK.init)
+	pause()
+	if not OGL_HOOK:init() then
+		unpause()
+		return -3
 	end
+	unpause()
 
 	return OGL_HOOK
 end

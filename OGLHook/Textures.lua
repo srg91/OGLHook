@@ -668,8 +668,8 @@ OGLHook_Textures.SyncLoadTexutre = function (file_path, texture_reg)
 	OGLHook_Utils.AllocateRegister(texture_reg, 4, 'dd 0')
 	OGLHook_Textures._SyncBindTexture('oglh_image', texture_reg)
 
-	OGLHook_Utils.DeallocateRegister('oglh_image')
-	OGLHook_Utils.DeallocateRegister('oglh_image_decoder', 4, decoder_opcode)
+--	OGLHook_Utils.DeallocateRegister('oglh_image')
+--	OGLHook_Utils.DeallocateRegister('oglh_image_decoder', 4, decoder_opcode)
 
 	return true
 end
