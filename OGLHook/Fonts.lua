@@ -72,7 +72,7 @@ OGLHook_Fonts.generateFontMap = function (font)
 	font_map.label = string.format('oglh_font_map_%d', font_map_index)
 
 	OGLHook_Utils.AllocateRegister(font_map.image_label, file_stream.size+4)
-	OGLHook_Utils.AllocateRegister(font_map.label, 4+4+8*#char_info)
+	OGLHook_Utils.AllocateRegister(font_map.label, 4+4+4+8*#char_info)
 
 	font_map.image_addr = getAddress(font_map.image_label)
 	font_map.addr = getAddress(font_map.label)
@@ -82,10 +82,35 @@ OGLHook_Fonts.generateFontMap = function (font)
 
 	file_stream.destroy()
 
-	writeFloat(font_map.addr, font_map.width)
-	writeFloat(font_map.addr + 4, font_map.height)
-	writeBytes(font_map.addr + 8, char_info)
+	writePointer(font_map, font_map.image_addr)
+	writeFloat(font_map.addr + 4, font_map.width)
+	writeFloat(font_map.addr + 8, font_map.height)
+	writeBytes(font_map.addr + 0xC, char_info)
 
 	table.insert(OGLHook_Fonts.font_maps, font_map)
 	return font_map
+end
+
+
+OGLHook_Fonts._InitLoadFontMap = function()
+	OGLHook_Utils.AllocateRegister('oglh_current_font_map', 4)
+
+	-- pointer for font map
+	local func_text = [[
+		mov eax,[esp+4]
+		mov [oglh_current_font_map],eax
+
+
+
+		ret 4
+	]]
+
+	return OGLHook_Utils.AllocateRegister('OGLH_LoadFontMap', 2048, func_text)
+end
+
+OGLHook_Fonts.setContainerText = function(text_container, text)
+end
+
+OGLHook_Fonts.createTextContainer = function(font_map, x, y)
+
 end

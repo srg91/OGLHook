@@ -22,6 +22,7 @@ local function OGLHook_InitMemory()
     	globalalloc(oglh_window_hdc, 4)
 		globalalloc(oglh_parent_context, 4)
 		globalalloc(oglh_context, 4)
+		globalalloc(oglh_thread_context, 4)
 		globalalloc(oglh_initialized, 1)
 		globalalloc(oglh_window_rect, 20)
 		globalalloc(oglh_image_handle, 4)
@@ -39,6 +40,8 @@ local function OGLHook_RewriteHook()
 		oglh_return:
 
 		oglh_hook_code:
+		push [esp+4]
+		pop [oglh_window_hdc]
 	]] .. OGLHook_Commands.commands_stack_text .. '\r\n' .. [[
 		jmp oglh_return
 	]]
@@ -54,6 +57,8 @@ local function OGLHook_RewriteBody()
 		oglh_return:
 
 		oglh_hook_code:
+		push [esp+4]
+		pop [oglh_window_hdc]
 	]] .. OGLHook_Commands.commands_stack_text .. '\r\n' .. [[
 		jmp oglh_return
 	]]
@@ -95,10 +100,10 @@ local function OGLHook_BeforeUpdate()
 		label(initialization)
 	]])
 
-	OGLHook_Commands.RunExternalCmd([[
-		push [esp+4]
-		pop [oglh_window_hdc]
-	]])
+	-- OGLHook_Commands.RunExternalCmd([[
+	-- 	push [esp+4]
+	-- 	pop [oglh_window_hdc]
+	-- ]])
 
 	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
 
@@ -204,8 +209,25 @@ local function OGLHook_Init(...)
 		jnz initialized
 	]])
 
+	OGLHook_Commands.RunExternalCmd([[
+		push 0
+		call GetDC
+		push eax
+	]])
+
+	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
+
 	OPENGL32.wglCreateContext('[oglh_window_hdc]', '->', 'oglh_context')
-	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
+
+	OPENGL32.wglCreateContext('->', 'oglh_thread_context')
+
+	OPENGL32.wglShareLists('[oglh_parent_context]', '[oglh_thread_context]')
+
+--	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
+
+	OPENGL32.wglShareLists('[oglh_thread_context]', '[oglh_context]')
+
+--	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 
 	OGLHook_Commands.PutLabel('initialization')
 	OGLHook_Commands.RunExternalCmd('mov [oglh_initialized],#1')
@@ -215,7 +237,7 @@ local function OGLHook_Init(...)
 	if type(OGL_HOOK.onInit) == 'function' then
 		OGL_HOOK:onInit()
 	else
-		OGLHook_SimpleOrtho()
+		-- OGLHook_SimpleOrtho()
 	end
 
 	OGLHook_Commands.PutLabel('initialized')
