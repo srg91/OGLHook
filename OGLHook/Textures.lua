@@ -21,12 +21,12 @@ OGLHook_Textures.InitLoadTextures = function()
 		return true
 	end
 
-	-- if OGLHook_Utils.getAddressSilent('windowscodecs.dll') == 0 then
- --  		if not injectDLL('windowscodecs.dll') then
- --    		OGLHook_Errors.setError(OGLHook_Errors.FAIL_TO_LOAD_DLL)
- --    		return false
- --  		end
-	-- end
+	if OGLHook_Utils.getAddressSilent('windowscodecs.dll') == 0 then
+  		if not injectDLL('windowscodecs.dll') then
+    		OGLHook_Errors.setError(OGLHook_Errors.FAIL_TO_LOAD_DLL)
+    		return false
+  		end
+	end
 
 	OGLHook_Textures.count = 0
 
@@ -590,23 +590,23 @@ OGLHook_Textures._SyncBindTexture = function (image_addr, texture_reg)
 		je @b
 
 		@@:
-		cmp [oglh_window_hdc],0
+		cmp [oglh_thread_hdc],0
 		je @b
 	]])
 
-	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_thread_context]')
+	OPENGL32.wglMakeCurrent('[oglh_thread_hdc]', '[oglh_thread_context]')
 
 	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 
 	OPENGL32.glGenTextures(1, texture_reg)
-	-- OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture_reg)
-	-- OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MIN_FILTER, OPENGL32.GL_NEAREST)
-	-- OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MAG_FILTER, OPENGL32.GL_NEAREST)
-	-- OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_S, OPENGL32.GL_REPEAT)
-	-- OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_T, OPENGL32.GL_REPEAT)
-	-- OPENGL32.glTexImage2D(OPENGL32.GL_TEXTURE_2D, 0, OPENGL32.GL_RGBA, '[oglh_pBitmap+4]', '[oglh_pBitmap+8]', 0, OPENGL32.GL_BGRA_EXT, OPENGL32.GL_UNSIGNED_BYTE, '[oglh_pBitmap+14]')
+	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture_reg)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MIN_FILTER, OPENGL32.GL_NEAREST)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MAG_FILTER, OPENGL32.GL_NEAREST)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_S, OPENGL32.GL_REPEAT)
+	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_T, OPENGL32.GL_REPEAT)
+	OPENGL32.glTexImage2D(OPENGL32.GL_TEXTURE_2D, 0, OPENGL32.GL_RGBA, '[oglh_pBitmap+4]', '[oglh_pBitmap+8]', 0, OPENGL32.GL_BGRA_EXT, OPENGL32.GL_UNSIGNED_BYTE, '[oglh_pBitmap+14]')
 
-	-- OGLHook_Commands.RunExternalCmd('call DeleteObject', '[oglh_pBitmap]')
+	OGLHook_Commands.RunExternalCmd('call DeleteObject', '[oglh_pBitmap]')
 
 	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
 
@@ -666,7 +666,10 @@ OGLHook_Textures.SyncLoadTexutre = function (file_path, texture_reg)
 	end
 
 	OGLHook_Utils.AllocateRegister(texture_reg, 4, 'dd 0')
-	OGLHook_Textures._SyncBindTexture('oglh_image')
+	OGLHook_Textures._SyncBindTexture('oglh_image', texture_reg)
+
+	OGLHook_Utils.DeallocateRegister('oglh_image')
+	OGLHook_Utils.DeallocateRegister('oglh_image_decoder', 4, decoder_opcode)
 
 	return true
 end

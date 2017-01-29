@@ -41,17 +41,20 @@ OGLHook_Commands._SyncWait = function (timeout)
 	end
 end
 
-
+COUNTER = 1
 OGLHook_Commands.SyncRun = function (func_text, timeout)
 	-- TODO: Do no run with debug
 	local flag_label = OGLHook_Commands._run_sync_flag_label
 	local flag_addr = OGLHook_Utils.getAddressSilent(flag_label)
 
+	debug = false
 	if flag_addr ~= 0 then
 		-- if readBytes(flag_addr, 1) == 1 then
 		-- 	OGLHook_Commands._SyncWait()
 		-- end
 		OGLHook_Utils.DeallocateRegister(flag_label)
+		debug = false
+		COUNTER = COUNTER +1
 	end
 
 	OGLHook_Utils.AllocateRegister(flag_label, 1, 'db 0')
@@ -64,13 +67,22 @@ OGLHook_Commands.SyncRun = function (func_text, timeout)
 		mov byte ptr [%s],#0
 		ret
 
-		createthread(%s)
+		// createthread(%s)
 	]], func_text, flag_label, run_label)
+
+	if not debug or COUNTER < 3 then
+		run_text = run_text .. '\r\n' .. string.format('createthread(%s)', run_label)
+	end
 
 	writeBytes(flag_addr, 1)
 	if OGLHook_Utils.AllocateRegister(run_label, 16384, run_text) then
-		-- OGLHook_Commands._SyncWait(timeout)
-	    -- OGLHook_Utils.DeallocateRegister(run_label)
+		if debug  and COUNTER >= 3 then
+			debug_setBreakpoint(run_label, 0, bptExecute)
+			autoAssemble(string.format('createthread(%s)', run_label))
+		else
+			OGLHook_Commands._SyncWait(timeout)
+		    OGLHook_Utils.DeallocateRegister(run_label)
+		end
 
 		return true
 	else

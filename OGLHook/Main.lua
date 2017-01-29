@@ -188,6 +188,87 @@ local function OGLHook_GetOpcodesText(address, size)
 end
 
 
+local function OLGHook_CreteFakeWindow()
+	OGLHook_Utils.AllocateRegister(
+		'oglh_wnd_class_name', 256, [[db 'OGLHookFakeWindowClass',0]]
+	)
+
+	OGLHook_Utils.AllocateRegister('oglh_fake_wnd_class', 48, [[
+		// cbSize
+		dd #48
+		// style
+		dd 0
+		// lpfnWndProc
+		dd DefWindowProcA
+		// cbClsExtra
+		dd 0
+		// cbWndExtra
+		dd 0
+		// hinstance
+		dd 0
+		// hIcon
+		dd 0
+		// hCursor
+		dd 0
+		// hbrBackground
+		dd 0
+		// lpszMenuName
+		dd 0
+		// lpszClassName
+		dd oglh_wnd_class_name
+		// hIconSm
+		dd 0
+	]])
+
+	OGLHook_Utils.AllocateRegister('oglh_fake_wnd_pf', 40, [[
+		// nSize
+		dw #40
+		// nVersion
+		dw 1
+		// dwFlags
+		// PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER
+		dd #37
+		// PFD_TYPE_RGBA, 32 bit framebuffer
+		db 0 #32
+		// ...
+		dd 0 0 0
+		db 0
+		// 24 bit depthbuffer, 8 bit stencilbuffer, 0 aux buffers
+		db #24 #8 0
+		// PFD_MAIN_PLANE
+		db 0
+		// ...
+		dd 0
+	]])
+
+	OGLHook_Utils.AllocateRegister('oglh_current_hinstance', 4)
+	OGLHook_Utils.AllocateRegister('oglh_thread_hwnd', 4)
+	OGLHook_Utils.AllocateRegister('oglh_thread_hdc', 4)
+--	OGLHook_Utils.AllocateRegister('oglh_thread_context', 4)
+
+	OGLHook_Commands.RunExternalCmd('call GetModuleHandleA', 0, 'oglh_current_hinstance')
+
+	OGLHook_Commands.RunExternalCmd([[
+		push [oglh_current_hinstance]
+		pop [oglh_fake_wnd_class+24]
+	]])
+
+	OGLHook_Commands.RunExternalCmd('call RegisterClassExA', 'oglh_fake_wnd_class')
+
+	OGLHook_Commands.RunExternalCmd(
+		'call CreateWindowExA',
+		{0, 'oglh_wnd_class_name', 0, 0, 100, 100, 1, 1, 0, 0, '[oglh_current_hinstance]', 0},
+		'oglh_thread_hwnd'
+	)
+
+	OGLHook_Commands.RunExternalCmd('call GetDC', '[oglh_thread_hwnd]', 'oglh_thread_hdc')
+
+	OGLHook_Commands.RunExternalCmd('call ChoosePixelFormat', {'[oglh_thread_hdc]', 'oglh_fake_wnd_pf'})
+
+	OGLHook_Commands.RunExternalCmd('call SetPixelFormat', {'[oglh_thread_hdc]', 'eax', 'oglh_fake_wnd_pf'})
+end
+
+
 local function OGLHook_Init(...)
 	local self = _getSelf(...)
 	if self == nil then
@@ -209,23 +290,23 @@ local function OGLHook_Init(...)
 		jnz initialized
 	]])
 
-	OGLHook_Commands.RunExternalCmd([[
-		push 0
-		call GetDC
-		push eax
-	]])
+	-- OGLHook_Commands.RunExternalCmd([[
+	-- 	push 0
+	-- 	call GetDC
+	-- 	push eax
+	-- ]])
 
-	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
+	-- OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
+
+	OLGHook_CreteFakeWindow()
 
 	OPENGL32.wglCreateContext('[oglh_window_hdc]', '->', 'oglh_context')
-
-	OPENGL32.wglCreateContext('->', 'oglh_thread_context')
+	OPENGL32.wglCreateContext('[oglh_thread_hdc]', '->', 'oglh_thread_context')
 
 	OPENGL32.wglShareLists('[oglh_parent_context]', '[oglh_thread_context]')
-
---	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
-
 	OPENGL32.wglShareLists('[oglh_thread_context]', '[oglh_context]')
+
+	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 
 --	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 
@@ -237,7 +318,7 @@ local function OGLHook_Init(...)
 	if type(OGL_HOOK.onInit) == 'function' then
 		OGL_HOOK:onInit()
 	else
-		-- OGLHook_SimpleOrtho()
+		OGLHook_SimpleOrtho()
 	end
 
 	OGLHook_Commands.PutLabel('initialized')
