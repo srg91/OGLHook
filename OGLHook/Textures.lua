@@ -352,7 +352,7 @@ OGLHook_Textures._InitCreateHBITMAP = function ()
 end
 
 
-OGLHook_Textures._BindTexture = function (image_addr, texture)
+OGLHook_Textures.ConvertTexture = function (texture, image_addr, filter_func)
 	local prev_commands = OGLHook_Commands.Flush()
 
 	if type(image_addr) == 'string' then
@@ -414,6 +414,11 @@ OGLHook_Textures._BindTexture = function (image_addr, texture)
 		{'[oglh_HBITMAP]', 24, 'oglh_pBitmap'}
 	)
 
+	-- TODO: remove this shit and just split convert and bind
+	if type(filter_func) == 'function' then
+		filter_func()
+	end
+
 	OGLHook_Commands.RunExternalCmd([[
 		@@:
 		cmp [oglh_thread_context],0
@@ -460,7 +465,7 @@ OGLHook_Textures._BindTexture = function (image_addr, texture)
 	local bitmap_addr = getAddress('oglh_pBitmap')
 	texture.width = readInteger(bitmap_addr + 4)
 	texture.height = readInteger(bitmap_addr + 8)
-	texture.bits = readInteger(bitmap_addr + 14)
+	texture.bits = readPointer(bitmap_addr + 20)
 
 	OGLHook_Utils.DeallocateRegister('oglh_pBitmap')
 
@@ -519,7 +524,7 @@ OGLHook_Textures._AllocateImageInGame = function (file_path)
 end
 
 
-OGLHook_Textures.LoadTexutre = function (file_path_or_memory_address)
+OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_func)
 	if not OGLHook_Textures.consts_initialized then
 		if not OGLHook_Textures.InitLoadTextures() then
 			return false
@@ -543,8 +548,7 @@ OGLHook_Textures.LoadTexutre = function (file_path_or_memory_address)
 	texture.register = 'oglh_texture_' .. (#OGLHook_Textures.textures + 1)
 	OGLHook_Utils.AllocateRegister(texture.register, 4, 'dd 0')
 
-	OGLHook_Textures._BindTexture(image_addr, texture)
-
+	OGLHook_Textures.ConvertTexture(texture, image_addr, filter_func)
 
 	if deallocate_memory_image then
 		OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_label)
@@ -552,6 +556,5 @@ OGLHook_Textures.LoadTexutre = function (file_path_or_memory_address)
 	OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_decoder_label, 4, decoder_opcode)
 
 	table.insert(OGLHook_Textures.textures, texture)
-
 	return texture
 end
