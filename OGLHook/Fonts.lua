@@ -14,17 +14,11 @@ require([[autorun\OGLHook\Commands]])
 
 
 OGLHook_Fonts._normalizeAlpha = function ()
-	OGLHook_Utils.AllocateRegister('o_ebx', 4)
-	OGLHook_Utils.AllocateRegister('o_ecx', 4)
-
 	local command = string.format([[
 		mov ebx,[oglh_pBitmap+14]
 
 		mov ecx,[oglh_pBitmap+4]
 		imul ecx,[oglh_pBitmap+8]
-
-		mov [o_ebx],ebx
-		mov [o_ecx],ecx
 
 		@@:
 		mov eax,[ebx]
@@ -127,143 +121,4 @@ OGLHook_Fonts.generateFontMap = function (font)
 
 	table.insert(OGLHook_Fonts.font_maps, font_map)
 	return font_map
-end
-
-
-OGLHook_Fonts.setContainerText = function(text_container, text)
-	local font_map = text_container.font_map
-
-	if OGLHook_Utils.getAddressSilent(text_container.register) ~= 0 then
-		OGLHook_Utils.DeallocateRegister(text_container.register)
-	end
-
-	-- glInterleavedArrays
-	-- GL_T2F_V3F
-	-- 20 bytes for one point
-	-- 80 bytes for one symbol
-	OGLHook_Utils.AllocateRegister(text_container.register, 80*#text)
-
-	local container_array_floats = {}
-	local container_array = {}
-
-	local current_pos = 0
-	local width_coof = 1 / font_map.width
-
-	for i=1,#text do 
-		local char = text:sub(i,i)
-		local char_byte = string.byte(char)
-
-		local char_left, char_width = unpack(font_map.letters[char_byte])
-
-		local texture_left = char_left * width_coof
-		local texture_width = char_width * width_coof
-
-		-- Texture 0,0
-		table.insert(container_array_floats, texture_left)
-		table.insert(container_array_floats, 0)
-
-		-- Vertex 0,0,0
-		table.insert(container_array_floats, current_pos)
-		table.insert(container_array_floats, 0)
-		table.insert(container_array_floats, 0)
-
-		-- Texutre 0,1
-		table.insert(container_array_floats, texture_left)
-		table.insert(container_array_floats, 1)
-
-		-- Vertex 0,1,0
-		table.insert(container_array_floats, current_pos)
-		table.insert(container_array_floats, font_map.height)
-		table.insert(container_array_floats, 0)
-
-		-- Texutre 1,1
-		table.insert(container_array_floats, texture_left + texture_width)
-		table.insert(container_array_floats, 1)
-
-		-- Vertex 1,1,0
-		table.insert(container_array_floats, current_pos + char_width)
-		table.insert(container_array_floats, font_map.height)
-		table.insert(container_array_floats, 0)
-
-		-- Texutre 1,0
-		table.insert(container_array_floats, texture_left + texture_width)
-		table.insert(container_array_floats, 0)
-
-		-- Vertex 1,0,0
-		table.insert(container_array_floats, current_pos + char_width)
-		table.insert(container_array_floats, 0)
-		table.insert(container_array_floats, 0)
-
-		current_pos = current_pos + char_width
-	end
-
-	for i,current in ipairs(container_array_floats) do
-		for j,byte in ipairs(floatToByteTable(current)) do
-			table.insert(container_array, byte)
-		end
-	end
-
-	writeBytes(text_container.register, container_array)
-	text_container.text = text
-end
-
-
-OGLHook_Fonts.createTextContainer = function (font_map, x, y, text)
-	local text_container_register = string.format(
-		OGLHook_Fonts._text_register_template, 
-		#OGLHook_Fonts.texts+1
-	)
-
-	-- TODO: color from font_map
-	local text_container = {
-		register=text_container_register,
-		font_map=font_map,
-		x=x,
-		y=y,
-		visible=true,
-		color=font_map.color,
-		alpha=1.0,
-		text=nil,
-		setText = function(self, text_)
-			OGLHook_Fonts.setContainerText(self, text_)
-		end
-	}
-
-	if text then
-		text_container:setText(text)
-	end
-
-	table.insert(OGLHook_Fonts.texts, text_container)
-	return text_container
-end
-
-
-OGLHook_Fonts.renderTextContainer = function (text_container)
-	if not (type(text_container.text) == 'string' and #text_container.text > 0) then
-		return false
-	end
-
-	if OGLHook_Utils.getAddressSilent(text_container.register) == 0 then
-		return false
-	end
-
-	if not text_container.visible then
-		return false
-	end
-
-	local dword_count = 4*#text_container.text
-	
-	OPENGL32.glPushMatrix()	
-
-	local cr, cg, cb = text_container.color & 0x0000ff, text_container.color & 0x00ff00, text_container.color & 0xff0000
-
-	OPENGL32.glColor4f(cr / 255, cg / 255, cb / 255, text_container.alpha)
-	OPENGL32.glTranslatef(text_container.x, text_container.y, 0)
-	
-	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, text_container.font_map.texture.register)
-
-	OPENGL32.glInterleavedArrays(OPENGL32.GL_T2F_V3F, 20, text_container.register)
-	OPENGL32.glDrawArrays(OPENGL32.GL_QUADS, 0, dword_count)
-
-	OPENGL32.glPopMatrix()
 end
