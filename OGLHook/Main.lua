@@ -6,9 +6,12 @@ tested with
 by srg91
 ]]--
 
-require([[autorun\OGLHook\OGLHook_Const]])
-require([[autorun\OGLHook\OGLHook_Utils]])
-require([[autorun\OGLHook\OGLHook_Commands]])
+require([[autorun\OGLHook\Const]])
+require([[autorun\OGLHook\Utils]])
+require([[autorun\OGLHook\Commands]])
+require([[autorun\OGLHook\Textures]])
+require([[autorun\OGLHook\Sprites]])
+require([[autorun\OGLHook\Fonts]])
 
 -- Private --
 local OPENGL32_NAME = 'OPENGL32'
@@ -22,6 +25,7 @@ local function OGLHook_InitMemory()
     	globalalloc(oglh_window_hdc, 4)
 		globalalloc(oglh_parent_context, 4)
 		globalalloc(oglh_context, 4)
+		globalalloc(oglh_thread_context, 4)
 		globalalloc(oglh_initialized, 1)
 		globalalloc(oglh_window_rect, 20)
 		globalalloc(oglh_image_handle, 4)
@@ -39,6 +43,8 @@ local function OGLHook_RewriteHook()
 		oglh_return:
 
 		oglh_hook_code:
+		push [esp+4]
+		pop [oglh_window_hdc]
 	]] .. OGLHook_Commands.commands_stack_text .. '\r\n' .. [[
 		jmp oglh_return
 	]]
@@ -54,6 +60,8 @@ local function OGLHook_RewriteBody()
 		oglh_return:
 
 		oglh_hook_code:
+		push [esp+4]
+		pop [oglh_window_hdc]
 	]] .. OGLHook_Commands.commands_stack_text .. '\r\n' .. [[
 		jmp oglh_return
 	]]
@@ -95,10 +103,10 @@ local function OGLHook_BeforeUpdate()
 		label(initialization)
 	]])
 
-	OGLHook_Commands.RunExternalCmd([[
-		push [esp+4]
-		pop [oglh_window_hdc]
-	]])
+	-- OGLHook_Commands.RunExternalCmd([[
+	-- 	push [esp+4]
+	-- 	pop [oglh_window_hdc]
+	-- ]])
 
 	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
 
@@ -107,10 +115,18 @@ local function OGLHook_BeforeUpdate()
 	end
 
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
+
+	OPENGL32.glEnable(OPENGL32.GL_BLEND)
+	OPENGL32.glBlendFunc(OPENGL32.GL_SRC_ALPHA, OPENGL32.GL_ONE_MINUS_SRC_ALPHA)
+
+	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 end
 
 
 local function OGLHook_AfterUpdate()
+	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+	OPENGL32.glDisable(OPENGL32.GL_BLEND)
+
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 	OGLHook_Commands.RunExternalCmd(OGL_HOOK._orig_opcodes)
 end
@@ -137,6 +153,14 @@ local function OGLHook_Update(...)
 	end
 
 	OGLHook_BeforeUpdate()
+
+	for _,sprite in ipairs(OGLHook_Sprites.list) do
+		if sprite and sprite.visible then
+			sprite:before_render()
+			sprite:render()
+			sprite:after_render()
+		end
+	end
 
 	for i,k in ipairs(self.update_funcs) do
 		k()
@@ -183,20 +207,100 @@ local function OGLHook_GetOpcodesText(address, size)
 end
 
 
+local function OLGHook_CreteFakeWindow()
+	OGLHook_Utils.AllocateRegister(
+		'oglh_wnd_class_name', 256, [[db 'OGLHookFakeWindowClass',0]]
+	)
+
+	OGLHook_Utils.AllocateRegister('oglh_fake_wnd_class', 48, [[
+		// cbSize
+		dd #48
+		// style
+		dd 0
+		// lpfnWndProc
+		dd DefWindowProcA
+		// cbClsExtra
+		dd 0
+		// cbWndExtra
+		dd 0
+		// hinstance
+		dd 0
+		// hIcon
+		dd 0
+		// hCursor
+		dd 0
+		// hbrBackground
+		dd 0
+		// lpszMenuName
+		dd 0
+		// lpszClassName
+		dd oglh_wnd_class_name
+		// hIconSm
+		dd 0
+	]])
+
+	OGLHook_Utils.AllocateRegister('oglh_fake_wnd_pf', 40, [[
+		// nSize
+		dw #40
+		// nVersion
+		dw 1
+		// dwFlags
+		// PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER
+		dd #37
+		// PFD_TYPE_RGBA, 32 bit framebuffer
+		db 0 #32
+		// ...
+		dd 0 0 0
+		db 0
+		// 24 bit depthbuffer, 8 bit stencilbuffer, 0 aux buffers
+		db #24 #8 0
+		// PFD_MAIN_PLANE
+		db 0
+		// ...
+		dd 0
+	]])
+
+	OGLHook_Utils.AllocateRegister('oglh_current_hinstance', 4)
+	OGLHook_Utils.AllocateRegister('oglh_thread_hwnd', 4)
+	OGLHook_Utils.AllocateRegister('oglh_thread_hdc', 4)
+--	OGLHook_Utils.AllocateRegister('oglh_thread_context', 4)
+
+	OGLHook_Commands.RunExternalCmd('call GetModuleHandleA', 0, 'oglh_current_hinstance')
+
+	OGLHook_Commands.RunExternalCmd([[
+		push [oglh_current_hinstance]
+		pop [oglh_fake_wnd_class+24]
+	]])
+
+	OGLHook_Commands.RunExternalCmd('call RegisterClassExA', 'oglh_fake_wnd_class')
+
+	OGLHook_Commands.RunExternalCmd(
+		'call CreateWindowExA',
+		{0, 'oglh_wnd_class_name', 0, 0, 100, 100, 1, 1, 0, 0, '[oglh_current_hinstance]', 0},
+		'oglh_thread_hwnd'
+	)
+
+	OGLHook_Commands.RunExternalCmd('call GetDC', '[oglh_thread_hwnd]', 'oglh_thread_hdc')
+
+	OGLHook_Commands.RunExternalCmd('call ChoosePixelFormat', {'[oglh_thread_hdc]', 'oglh_fake_wnd_pf'})
+
+	OGLHook_Commands.RunExternalCmd('call SetPixelFormat', {'[oglh_thread_hdc]', 'eax', 'oglh_fake_wnd_pf'})
+end
+
+
 local function OGLHook_Init(...)
 	local self = _getSelf(...)
 	if self == nil then
-		return 0
+		return false
 	end
 
-	local error_exit_status = self._hot_inject and 0 or 1
 	self._orig_opcodes = OGLHook_GetOpcodesText(OGLH_ADDR_NAME, 5)
 
 	OGLHook_Commands.RunExternalCmd(self._orig_opcodes)
 	OGLHook_Commands.Flush()
 
 	if not OGLHook_RewriteHook() then
-		return error_exit_status
+		return false
 	end
 
 	OGLHook_Commands.RunExternalCmd([[
@@ -204,7 +308,14 @@ local function OGLHook_Init(...)
 		jnz initialized
 	]])
 
+	OLGHook_CreteFakeWindow()
+
 	OPENGL32.wglCreateContext('[oglh_window_hdc]', '->', 'oglh_context')
+	OPENGL32.wglCreateContext('[oglh_thread_hdc]', '->', 'oglh_thread_context')
+
+	OPENGL32.wglShareLists('[oglh_parent_context]', '[oglh_thread_context]')
+	OPENGL32.wglShareLists('[oglh_thread_context]', '[oglh_context]')
+
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 
 	OGLHook_Commands.PutLabel('initialization')
@@ -222,12 +333,7 @@ local function OGLHook_Init(...)
 	self._initialization_part = OGLHook_Commands.Flush()
 
 	if not OGLHook_Update() then
-		return error_exit_status
-	end
-
-	if not self._hot_inject and self._hot_inject ~= 0 then
-		debug_removeBreakpoint(OGLH_ADDR_NAME)
-		return 0
+		return false
 	end
 
 	return true
@@ -306,7 +412,7 @@ function OGLHook_SimplePerspective(fov, aspect_ratio, znear, zfar)
 end
 
 
-function OGLHook_Create(hot_inject, onInit)
+function OGLHook_Create(onInit)
 	reinitializeSymbolhandler()
 
 	local hook_address = OGLHook_Utils.getAddressSilent(OGLH_ADDR_NAME)
@@ -323,7 +429,6 @@ function OGLHook_Create(hot_inject, onInit)
 	end
 
 	OGL_HOOK = {
-		_hot_inject=(not not hot_inject),
 		_orig_opcodes=nil,
 		_initialization_part=nil,
 
@@ -336,18 +441,16 @@ function OGLHook_Create(hot_inject, onInit)
 			table.insert(self.update_funcs, update_func)
 		end,
 		destroy = OGLHook_Destroy,
+
+		loadTexture = OGLHook_Textures.LoadTexture,
+		createSprite = OGLHook_Sprites.Sprite,
+
+		generateFontMap = OGLHook_Fonts.generateFontMap,
+		createTextContainer = OGLHook_Sprites.TextContainer,
 	}
 
-	if hot_inject then
-		if not OGL_HOOK:init() then
-			return -3
-		end
-	else
-		OGLHook_Textures.InitLoadTextures()
-		if not debug_isDebugging() then
-			debugProcess()
-		end
-		debug_setBreakpoint(hook_address, 0, bptExecute, OGL_HOOK.init)
+	if not OGL_HOOK:init() then
+		return -3
 	end
 
 	return OGL_HOOK

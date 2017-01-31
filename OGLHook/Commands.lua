@@ -5,12 +5,77 @@ end
 OGLHook_Commands = {
 	commands_stack = {},
 	commands_stack_text = '',
+	_run_sync_label = 'oglh_sync_run_func',
+	_run_sync_flag_label = 'oglh_sync_run_flag'
 }
 
-require([[autorun\OGLHook\OGLHook_Const]])
+require([[autorun\OGLHook\Const]])
+require([[autorun\OGLHook\Utils]])
 
 OPENGL32 = {_dll_name='OPENGL32'}
 GLU32 = {_dll_name='GLU32'}
+
+
+OGLHook_Commands._SyncWait = function (timeout)
+	if timeout == nil then
+		timeout = 30
+	end
+
+	local flag_label = OGLHook_Commands._run_sync_flag_label
+	local flag_addr = OGLHook_Utils.getAddressSilent(flag_label)
+
+	if flag_addr == 0 then
+		return false
+	end
+
+	local start_clock = os.clock()
+
+	while readBytes(flag_addr, 1) == 1 and not timeout_raised do
+		local current_clock = os.clock()
+		while os.clock() - current_clock <= 0.001 do
+		end
+
+		if os.clock() - start_clock >= timeout then
+			timeout_raised = true
+		end
+	end
+end
+
+
+OGLHook_Commands.SyncRun = function (func_text, timeout)
+	local flag_label = OGLHook_Commands._run_sync_flag_label
+	local flag_addr = OGLHook_Utils.getAddressSilent(flag_label)
+
+	if flag_addr ~= 0 then
+		OGLHook_Utils.DeallocateRegister(flag_label)
+	end
+
+	OGLHook_Utils.AllocateRegister(flag_label, 1, 'db 0')
+	flag_addr = getAddress(flag_label)
+
+	local run_label = OGLHook_Commands._run_sync_label
+	local run_text = string.format([[
+		%s
+
+		mov byte ptr [%s],#0
+		ret
+
+		createthread(%s)
+	]], func_text, flag_label, run_label)
+
+	writeBytes(flag_addr, 1)
+	if OGLHook_Utils.AllocateRegister(run_label, 16384, run_text) then
+		if not debug_isDebugging() then
+			OGLHook_Commands._SyncWait(timeout)
+		    OGLHook_Utils.DeallocateRegister(run_label)
+		end
+
+		return true
+	else
+		writeBytes(flag_addr, 0)
+		return false
+	end
+end
 
 
 OGLHook_Commands.MakeCall = function (func_name, namespace)
@@ -26,26 +91,17 @@ end
 
 OGLHook_Commands.GetValueType = function (value, func_name)
 	if func_name ~= nil then
-		-- TODO: Fix this uhly hack with glOrtho
-		if string.find(func_name, 'glOrtho') ~= nil then
-			return 'double'
-		end
-
-		if string.find(func_name, 'gluPerspective') ~= nil then
-			return 'double'
-		end
-
-		if string.find(func_name, 'glClearDepth') ~= nil then
-			return 'double'
+		for _,fn in ipairs({'glOrtho', 'gluPerspective', 'glClearDepth'}) do
+			if string.find(func_name, fn) ~= nil then
+				return 'double'
+			end
 		end
 
 		if type(value) == 'number' then
-			if string.find(func_name, 'glRotatef') ~= nil then
-				return 'float'
-			end
-
-			if string.find(func_name, 'glTranslatef') ~= nil then
-				return 'float'
+			for _,fn in ipairs({'glRotatef', 'glTranslatef', 'glScalef'}) do
+				if string.find(func_name, fn) ~= nil then
+					return 'float'
+				end
 			end
 
 			local type_map = {
@@ -137,10 +193,13 @@ OGLHook_Commands.RunExternalCmd = function (command, args, result_reg)
 		result_cmd = string.format(result_cmd, result_reg)
 	end
 
+	local command = args_str .. command .. result_cmd
 	table.insert(
 		OGLHook_Commands.commands_stack,
-		args_str .. command .. result_cmd
+		command
 	)
+
+	return command
 end
 
 

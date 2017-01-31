@@ -6,14 +6,15 @@ end
 
 OGLHook_Textures = {
 	count = 0,
-	_image_size_lbl_template = 'oglh_source_image_size_%d',
-	_image_lbl_template = 'oglh_source_image_%d',
-	_image_decoder_lbl_template = 'oglh_image_decoder_%d',
+	textures = {},
+	_image_label = 'oglh_source_image',
+	_image_decoder_label = 'oglh_image_decoder',
+	_register_label_template = 'oglh_texture_%d'
 }
 
-require([[autorun\OGLHook\OGLHook_Utils]])
-require([[autorun\OGLHook\OGLHook_Errors]])
-require([[autorun\OGLHook\OGLHook_Commands]])
+require([[autorun\OGLHook\Utils]])
+require([[autorun\OGLHook\Errors]])
+require([[autorun\OGLHook\Commands]])
 
 
 OGLHook_Textures.InitLoadTextures = function()
@@ -352,93 +353,30 @@ OGLHook_Textures._InitCreateHBITMAP = function ()
 end
 
 
-OGLHook_Textures._GuessDecoder = function (file_stream)
-	file_stream.position = 0
+OGLHook_Textures.ConvertTexture = function (texture, image_addr, filter_func)
+	local prev_commands = OGLHook_Commands.Flush()
 
-	local several_bytes = string.format('%c%c%c%c%c', unpack(file_stream.read(5)))
-	local decoder_type = 'CLSID_WICBmpDecoder'
-	local decoders_map = {
-		CLSID_WICPngDecoder1 = 'PNG',
-		CLSID_WICBmpDecoder = 'BM',
-		CLSID_WICIcoDecoder = '\000\000\001\000',
-		CLSID_WICJpegDecoder = '\255\216',
-		CLSID_WICGifDecoder = 'GIF',
-		CLSID_WICTiffDecoder = 'II',
-		CLSID_WICDdsDecoder = 'DDS',
-	}
-
-	for decoder, magic in pairs(decoders_map) do
-		if string.find(several_bytes, magic) then
-			return decoder
-		end
+	if type(image_addr) == 'string' then
+		image_addr = getAddress(image_addr)
 	end
 
-	return decoder_type
-end
+	local image_size = readInteger(image_addr)
+	local image_pointer = image_addr + 4
+	local decoder_label = OGLHook_Textures._image_decoder_label
 
-
-OGLHook_Textures._AllocateImageInGame = function (file_path)
-	local file_stream = createMemoryStream()
-	file_stream.loadFromFile(file_path)
-
-	local texture_index = OGLHook_Textures.count + 1
-	local source_image_size_label = string.format(
-		OGLHook_Textures._image_size_lbl_template,
-		texture_index
-	)
-	local source_image_label = string.format(
-		OGLHook_Textures._image_lbl_template,
-		texture_index
-	)
-
-	OGLHook_Utils.AllocateRegister(source_image_size_label, 4)
-	OGLHook_Utils.AllocateRegister(source_image_label, file_stream.size)
-
-	writeInteger(getAddress(source_image_size_label), file_stream.size)
-	writeBytes(getAddress(source_image_label), file_stream.read(file_stream.size))
-
-	local decoder = OGLHook_Textures._GuessDecoder(file_stream)
-	local decoder_label = string.format(
-		OGLHook_Textures._image_decoder_lbl_template,
-		texture_index
-	)
-	local decoder_opcode = string.format('dd OGLH_%s', decoder)
-	OGLHook_Utils.AllocateRegister(decoder_label, 4, decoder_opcode)
-
-	file_stream.destroy()
-
-	OGLHook_Textures.count = texture_index
-
-	return true
-end
-
-
-OGLHook_Textures._GLLoadTexture = function (texture_index, texture_reg)
-	local source_image_size_label = string.format(
-		OGLHook_Textures._image_size_lbl_template,
-		texture_index
-	)
-	local source_image_label = string.format(
-		OGLHook_Textures._image_lbl_template,
-		texture_index
-	)
-	local decoder_label = string.format(
-		OGLHook_Textures._image_decoder_lbl_template,
-		texture_index
-	)
-	local return_label = string.format('return_%d', texture_index)
-	local release_stream_label = string.format('release_stream_%d', texture_index)
+	local return_label = 'return'
+	local release_stream_label = 'release_stream'
 
 	OGLHook_Utils.AllocateRegister('oglh_pBitmap', 24)
 
-	OGLHook_Commands.RunExternalCmd(string.format([[
-		label(%s)
-		label(%s)
-	]], return_label, release_stream_label))
+	OGLHook_Commands.RunExternalCmd([[
+		label(return)
+		label(release_stream)
+	]])
 
 	OGLHook_Commands.RunExternalCmd(
 		'call OGLH_CreateStreamFromMemoryFunc',
-		{source_image_label, string.format('[%s]', source_image_size_label)},
+		{string.format('%x', image_pointer), image_size},
 		'oglh_ipStream'
 	)
 
@@ -477,10 +415,27 @@ OGLHook_Textures._GLLoadTexture = function (texture_index, texture_reg)
 		{'[oglh_HBITMAP]', 24, 'oglh_pBitmap'}
 	)
 
+	-- TODO: remove this shit and just split convert and bind
+	if type(filter_func) == 'function' then
+		filter_func()
+	end
+
+	OGLHook_Commands.RunExternalCmd([[
+		@@:
+		cmp [oglh_thread_context],0
+		je @b
+
+		@@:
+		cmp [oglh_thread_hdc],0
+		je @b
+	]])
+
+	OPENGL32.wglMakeCurrent('[oglh_thread_hdc]', '[oglh_thread_context]')
+
 	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 
-	OPENGL32.glGenTextures(1, texture_reg)
-	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture_reg)
+	OPENGL32.glGenTextures(1, texture.register_label)
+	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture.register_label)
 	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MIN_FILTER, OPENGL32.GL_NEAREST)
 	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MAG_FILTER, OPENGL32.GL_NEAREST)
 	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_S, OPENGL32.GL_REPEAT)
@@ -502,23 +457,106 @@ OGLHook_Textures._GLLoadTexture = function (texture_index, texture_reg)
 	]])
 
 	OGLHook_Commands.PutLabel(return_label)
+
+	OPENGL32.wglMakeCurrent(0, 0)
+
+	local load_texture_func = OGLHook_Commands.Flush()
+	OGLHook_Commands.SyncRun(load_texture_func)
+
+	local bitmap_addr = getAddress('oglh_pBitmap')
+	texture.width = readInteger(bitmap_addr + 4)
+	texture.height = readInteger(bitmap_addr + 8)
+	texture.bits = readPointer(bitmap_addr + 20)
+
+	OGLHook_Utils.DeallocateRegister('oglh_pBitmap')
+
+	OGLHook_Commands.RunExternalCmd(prev_commands)
 end
 
 
-OGLHook_Textures.LoadTexutre = function (file_path, texture_reg)
+OGLHook_Textures._GuessDecoder = function (str_header)
+	local decoder_type = 'CLSID_WICBmpDecoder'
+	local decoders_map = {
+		CLSID_WICPngDecoder1 = 'PNG',
+		CLSID_WICBmpDecoder = 'BM',
+		CLSID_WICIcoDecoder = '\000\000\001\000',
+		CLSID_WICJpegDecoder = '\255\216',
+		CLSID_WICGifDecoder = 'GIF',
+		CLSID_WICTiffDecoder = 'II',
+		CLSID_WICDdsDecoder = 'DDS',
+	}
+
+	for decoder, magic in pairs(decoders_map) do
+		if string.find(str_header, magic) then
+			return decoder
+		end
+	end
+
+	return decoder_type
+end
+
+
+OGLHook_Textures._SetupDecoder = function (image_addr)
+	local header_bytes = readBytes(image_addr + 4, 5, true)
+	local str_header = string.format('%c%c%c%c%c', unpack(header_bytes))
+
+	local decoder = OGLHook_Textures._GuessDecoder(str_header)
+	local decoder_label = OGLHook_Textures._image_decoder_label
+	local decoder_opcode = string.format('dd OGLH_%s', decoder)
+	OGLHook_Utils.AllocateRegister(decoder_label, 4, decoder_opcode)
+end
+
+
+OGLHook_Textures._AllocateImageInGame = function (file_path)
+	local file_stream = createMemoryStream()
+	file_stream.loadFromFile(file_path)
+
+	local source_image_label = OGLHook_Textures._image_label
+
+	OGLHook_Utils.AllocateRegister(source_image_label, 4+file_stream.size)
+	local source_image_addr = getAddress(source_image_label)
+
+	writeInteger(source_image_addr, file_stream.size)
+	writeBytes(source_image_addr+4, file_stream.read(file_stream.size))
+
+	file_stream.destroy()
+
+	return source_image_addr
+end
+
+
+OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_func)
 	if not OGLHook_Textures.consts_initialized then
 		if not OGLHook_Textures.InitLoadTextures() then
 			return false
 		end
 	end
 
-	if not OGLHook_Textures._AllocateImageInGame(file_path) then
-		return false
+	local texture = {}
+	local image_addr = file_path_or_memory_address
+	local deallocate_memory_image = false
+
+	if type(image_addr) == 'string' then
+		deallocate_memory_image = true
+		image_addr = OGLHook_Textures._AllocateImageInGame(file_path_or_memory_address)
+		if image_addr == 0 then
+			return false
+		end
 	end
 
-	OGLHook_Utils.AllocateRegister(texture_reg, 4, 'dd 0')
-	OGLHook_Textures._GLLoadTexture(OGLHook_Textures.count, texture_reg)
+	OGLHook_Textures._SetupDecoder(image_addr)
 
-	return true
+	texture.register_label =
+		string.format(OGLHook_Textures._register_label_template, #OGLHook_Textures.textures + 1)
+	OGLHook_Utils.AllocateRegister(texture.register_label, 4, 'dd 0')
+
+	OGLHook_Textures.ConvertTexture(texture, image_addr, filter_func)
+
+	if deallocate_memory_image then
+		OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_label)
+	end
+	OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_decoder_label, 4, decoder_opcode)
+
+	table.insert(OGLHook_Textures.textures, texture)
+	return texture
 end
-

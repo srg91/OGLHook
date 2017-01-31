@@ -6,7 +6,7 @@ OGLHook_Utils = {
 	_allocated_registers_list = {},
 }
 
-require([[autorun\OGLHook\OGLHook_Errors]])
+require([[autorun\OGLHook\Errors]])
 
 
 OGLHook_Utils.getAddressSilent = function (address_str)
@@ -22,6 +22,17 @@ OGLHook_Utils.getAddressSilent = function (address_str)
 		OGLHook_Errors.setError(OGLHook_Errors.ADDRESS_NOT_FOUND)
 		return 0
 	end
+end
+
+
+OGLHook_Utils.getTempFileName = function ()
+	local ce_dir = getCheatEngineDir()
+	local temp_name = os.tmpname()
+	local current_time = os.time()
+
+	temp_name = temp_name:sub(2)
+
+	return ce_dir .. temp_name .. tostring(current_time)
 end
 
 
