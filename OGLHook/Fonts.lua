@@ -4,8 +4,6 @@ end
 
 OGLHook_Fonts = {
 	font_maps={},
-	texts={},
-	_text_register_template = 'oglh_text_container_%d'
 }
 
 require([[autorun\OGLHook\Utils]])
@@ -66,13 +64,7 @@ OGLHook_Fonts.generateFontMap = function (font)
 		local char_left = font_map.width
 
 		font_map.width = font_map.width + char_width
-		font_map.letters[i] = {char_left, char_width} 
-
-		-- for i,current in ipairs({char_left, char_width}) do
-		-- 	for j,byte in ipairs(floatToByteTable(current)) do
-		-- 		table.insert(char_info, byte)
-		-- 	end
-		-- end
+		font_map.letters[i] = {char_left, char_width}
 
 		text = text .. c
 	end
@@ -109,11 +101,6 @@ OGLHook_Fonts.generateFontMap = function (font)
 	writeBytes(image_addr + 4, file_stream.read(file_stream.size))
 
 	file_stream.destroy()
-
-	-- writePointer(font_map, image_addr)
-	-- writeFloat(font_map.addr, font_map.width)
-	-- writeFloat(font_map.addr + 4, font_map.height)
-	-- writeBytes(font_map.addr + 8, char_info)
 
 	font_map.texture = OGLHook_Textures.LoadTexture(image_addr, OGLHook_Fonts._normalizeAlpha)
 

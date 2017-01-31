@@ -9,6 +9,7 @@ OGLHook_Textures = {
 	textures = {},
 	_image_label = 'oglh_source_image',
 	_image_decoder_label = 'oglh_image_decoder',
+	_register_label_template = 'oglh_texture_%d'
 }
 
 require([[autorun\OGLHook\Utils]])
@@ -433,8 +434,8 @@ OGLHook_Textures.ConvertTexture = function (texture, image_addr, filter_func)
 
 	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 
-	OPENGL32.glGenTextures(1, texture.register)
-	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture.register)
+	OPENGL32.glGenTextures(1, texture.register_label)
+	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, texture.register_label)
 	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MIN_FILTER, OPENGL32.GL_NEAREST)
 	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_MAG_FILTER, OPENGL32.GL_NEAREST)
 	OPENGL32.glTexParameteri(OPENGL32.GL_TEXTURE_2D, OPENGL32.GL_TEXTURE_WRAP_S, OPENGL32.GL_REPEAT)
@@ -511,7 +512,7 @@ OGLHook_Textures._AllocateImageInGame = function (file_path)
 	file_stream.loadFromFile(file_path)
 
 	local source_image_label = OGLHook_Textures._image_label
-	
+
 	OGLHook_Utils.AllocateRegister(source_image_label, 4+file_stream.size)
 	local source_image_addr = getAddress(source_image_label)
 
@@ -545,8 +546,9 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 
 	OGLHook_Textures._SetupDecoder(image_addr)
 
-	texture.register = 'oglh_texture_' .. (#OGLHook_Textures.textures + 1)
-	OGLHook_Utils.AllocateRegister(texture.register, 4, 'dd 0')
+	texture.register_label =
+		string.format(OGLHook_Textures._register_label_template, #OGLHook_Textures.textures + 1)
+	OGLHook_Utils.AllocateRegister(texture.register_label, 4, 'dd 0')
 
 	OGLHook_Textures.ConvertTexture(texture, image_addr, filter_func)
 

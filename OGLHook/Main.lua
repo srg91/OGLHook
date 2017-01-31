@@ -9,6 +9,9 @@ by srg91
 require([[autorun\OGLHook\Const]])
 require([[autorun\OGLHook\Utils]])
 require([[autorun\OGLHook\Commands]])
+require([[autorun\OGLHook\Textures]])
+require([[autorun\OGLHook\Sprites]])
+require([[autorun\OGLHook\Fonts]])
 
 -- Private --
 local OPENGL32_NAME = 'OPENGL32'
@@ -112,10 +115,18 @@ local function OGLHook_BeforeUpdate()
 	end
 
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
+
+	OPENGL32.glEnable(OPENGL32.GL_BLEND)
+	OPENGL32.glBlendFunc(OPENGL32.GL_SRC_ALPHA, OPENGL32.GL_ONE_MINUS_SRC_ALPHA)
+
+	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 end
 
 
 local function OGLHook_AfterUpdate()
+	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+	OPENGL32.glDisable(OPENGL32.GL_BLEND)
+
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 	OGLHook_Commands.RunExternalCmd(OGL_HOOK._orig_opcodes)
 end
@@ -142,6 +153,14 @@ local function OGLHook_Update(...)
 	end
 
 	OGLHook_BeforeUpdate()
+
+	for _,sprite in ipairs(OGLHook_Sprites.list) do
+		if sprite and sprite.visible then
+			sprite:before_render()
+			sprite:render()
+			sprite:after_render()
+		end
+	end
 
 	for i,k in ipairs(self.update_funcs) do
 		k()
@@ -299,7 +318,6 @@ local function OGLHook_Init(...)
 
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 
-
 	OGLHook_Commands.PutLabel('initialization')
 	OGLHook_Commands.RunExternalCmd('mov [oglh_initialized],#1')
 
@@ -423,14 +441,17 @@ function OGLHook_Create(onInit)
 			table.insert(self.update_funcs, update_func)
 		end,
 		destroy = OGLHook_Destroy,
+
+		loadTexture = OGLHook_Textures.LoadTexture,
+		createSprite = OGLHook_Sprites.Sprite,
+
+		generateFontMap = OGLHook_Fonts.generateFontMap,
+		createTextContainer = OGLHook_Sprites.TextContainer,
 	}
 
-	pause()
 	if not OGL_HOOK:init() then
-		unpause()
 		return -3
 	end
-	unpause()
 
 	return OGL_HOOK
 end

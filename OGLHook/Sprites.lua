@@ -6,7 +6,6 @@ OGLHook_Sprites = {
 	list = {}
 }
 
-
 require([[autorun\OGLHook\Commands]])
 require([[autorun\OGLHook\Textures]])
 require([[autorun\OGLHook\Utils]])
@@ -51,22 +50,16 @@ end
 OGLHook_Sprites.RenderObject.before_render = function (self)
 	OPENGL32.glPushMatrix()
 
-	OPENGL32.glTranslatef(self.x, self.y, 0)
+	OPENGL32.glTranslatef(self.x - self.pivot_x, self.y - self.pivot_y, 0)
+	OPENGL32.glTranslatef(self.pivot_x, self.pivot_y, 0)
+	OPENGL32.glScalef(self.scale_x, self.scale_y, 1)
 	OPENGL32.glRotatef(self.rotation, 0, 0, 1)
-	OPENGL32.glTranslatef(self.x + self.pivot_x, self.y + self.pivot_y, 0)
+	OPENGL32.glTranslatef(-self.pivot_x, -self.pivot_y, 0)
 
-	local cr = bit32.band(self.color, 0x0000ff) / 255
-	local cg = bit32.band(self.color, 0x00ff00) / 255
-	local cb = bit32.band(self.color, 0xff0000) / 255
+	local cr = (self.color & 0x0000ff) / 255
+	local cg = ((self.color & 0x00ff00) >> 8) / 255
+	local cb = ((self.color & 0xff0000) >> 16) / 255
 	OPENGL32.glColor4f(cr, cg, cb, self.alpha)
-
---	local nx = self.x + self.pivot_x
---	local ny = self.y + self.pivot_y
---	local a = self.rotation * math.pi / 180
---
---	local px = nx * math.cos(a) - ny * math.sin(a)
---	local py = ny * math.cos(a) + ny * math.sin(a)
---	OPENGL32.glTranslatef(px, py, 0)
 end
 
 
@@ -97,11 +90,12 @@ end
 OGLHook_Sprites.RenderObject.setSize = function (self, width, height)
 	self.width = width
 	self.height = height
+	self:resetPivotPoint()
 end
 
 
 OGLHook_Sprites.RenderObject.getScale = function (self)
-	return self.width, self.height
+	return self.scale_x, self.scale_y
 end
 
 
@@ -143,8 +137,9 @@ end
 
 
 OGLHook_Sprites.RenderObject.resetPivotPoint = function (self)
-	local w, h = self:getSize()
-	self.pivot_x, self.pivot_y = w / 2, h / 2
+	-- local w, h = self:getSize()
+	-- self.pivot_x, self.pivot_y = w / 2, h / 2
+	self:setPivotPoint(0, 0)
 end
 
 
@@ -154,7 +149,7 @@ end
 
 
 OGLHook_Sprites.RenderObject.setColor = function (self, color)
-	return self.color
+	self.color = color
 end
 
 
@@ -169,7 +164,7 @@ end
 
 
 OGLHook_Sprites.RenderObject.setAlpha = function (self, alpha)
-	if alpha > 0 then
+	if alpha > 1 then
 		alpha = 1
 	elseif alpha < 0 then
 		alpha = 0
@@ -198,6 +193,10 @@ OGLHook_Sprites.RenderObject.setVisible = function (self, visible)
 end
 
 
+OGLHook_Sprites.RenderObject.destory = function (self)
+end
+
+
 OGLHook_Sprites.RenderObject.new = function (cls, x, y, width, height, visible)
 	local obj = inherit(OGLHook_Sprites.RenderObject, {})
 
@@ -205,6 +204,7 @@ OGLHook_Sprites.RenderObject.new = function (cls, x, y, width, height, visible)
 	obj:setSize(width, height)
 
 	obj:resetPivotPoint()
+	obj:resetRotation()
 	obj:resetScale()
 	obj:resetColor()
 	obj:resetAlpha()
@@ -219,14 +219,39 @@ setmetatable(
 )
 
 
-OGLHook_Sprites.Sprite = inherit(OGLHook_Sprites.RenderObject)
+OGLHook_Sprites.Sprite = {
+	texture_l = nil,
+	texture_r = nil,
+	texture_t = nil,
+	texture_b = nil
+}
 
 
 OGLHook_Sprites.Sprite.resetSize = function (self)
 	if self.texture then
 		self:setSize(self.texture.width, self.texture.height)
 	end
-	self:resetPivotPoint()
+end
+
+
+OGLHook_Sprites.Sprite.getTextureCoordinates = function (self)
+	return self.texture_l, self.texture_r, self.texture_t, self.texture_b
+end
+
+
+OGLHook_Sprites.Sprite.setTextureCoordinates = function (self, tl, tr, tt, tb)
+	self.texture_l = tl
+	self.texture_r = tr
+	self.texture_t = tt
+	self.texture_b = tb
+end
+
+
+OGLHook_Sprites.Sprite.resetTextureCoordinates = function (self)
+	self.texture_l = 0
+	self.texture_r = 1
+	self.texture_t = 0
+	self.texture_b = 1
 end
 
 
@@ -241,15 +266,41 @@ OGLHook_Sprites.Sprite.assignTexture = function (self, texture)
 
 	self.texture = texture
 	self:resetSize()
+	self:resetTextureCoordinates()
+end
+
+
+OGLHook_Sprites.Sprite.render = function (self)
+	if self.texture then
+		OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, self.texture.register_label)
+	end
+
+	local points = {
+		{self.texture_l, self.texture_t, 0, 0},
+		{self.texture_l, self.texture_b, 0, self.height},
+		{self.texture_r, self.texture_b, self.width, self.height},
+		{self.texture_r, self.texture_t, self.width, 0}
+	}
+
+	OPENGL32.glBegin(OPENGL32.GL_QUADS)
+		for _,point in ipairs(points) do
+			local tx, ty, x, y = unpack(point)
+			if self.texture then
+				OPENGL32.glTexCoord2f(tx, ty)
+			end
+			OPENGL32.glVertex2f(x, y)
+		end
+	OPENGL32.glEnd()
 end
 
 setmetatable(
 	OGLHook_Sprites.Sprite,
 	{
 		__call = function (cls, x, y, texture, visible)
-			local sprite = cls(x, y, 0, 0, visible)
+			local sprite = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
+			inherit(cls, sprite)
 
-			sprite:assingTexture(texture)
+			sprite:assignTexture(texture)
 
 			table.insert(OGLHook_Sprites.list, sprite)
 			return sprite
@@ -269,29 +320,29 @@ OGLHook_Sprites.TextContainer = {
 OGLHook_Sprites.TextContainer =
 	inherit(OGLHook_Sprites.RenderObject, OGLHook_Sprites.TextContainer)
 
--- TODO: Move it to Sprite and TextContainer
+
 OGLHook_Sprites.TextContainer.resetSize = function (self)
---	local tw, th = self.texture.width, self.texture.height
---
---	if tw > 0 and th > 0 then
---		self:setSize(tw, th)
---	end
---	self:resetPivotPoint()
+end
+
+
+OGLHook_Sprites.TextContainer.assignFontMap = function (self, font_map)
+	self.font_map = font_map
+	self:setColor(self.font_map.color)
 end
 
 
 OGLHook_Sprites.TextContainer.setText = function(self, text)
 	local font_map = self.font_map
 
-	if OGLHook_Utils.getAddressSilent(self.register) ~= 0 then
-		OGLHook_Utils.DeallocateRegister(self.register)
+	if OGLHook_Utils.getAddressSilent(self.register_label) ~= 0 then
+		OGLHook_Utils.DeallocateRegister(self.register_label)
 	end
 
 	-- glInterleavedArrays
 	-- GL_T2F_V3F
 	-- 20 bytes for one point
 	-- 80 bytes for one symbol
-	OGLHook_Utils.AllocateRegister(self.register, 80*#text)
+	OGLHook_Utils.AllocateRegister(self.register_label, 80*#text)
 
 	local container_array_floats = {}
 	local container_array = {}
@@ -357,7 +408,7 @@ OGLHook_Sprites.TextContainer.setText = function(self, text)
 		end
 	end
 
-	writeBytes(self.register, container_array)
+	writeBytes(self.register_label, container_array)
 	self.text = text
 
 	self:setSize(text_width, font_map.height)
@@ -369,29 +420,16 @@ OGLHook_Sprites.TextContainer.render = function (self)
 		return false
 	end
 
-	if OGLHook_Utils.getAddressSilent(self.register) == 0 then
-		return false
-	end
-
-	if not self.visible then
+	if OGLHook_Utils.getAddressSilent(self.register_label) == 0 then
 		return false
 	end
 
 	local dword_count = 4*#self.text
 
-	OPENGL32.glPushMatrix()
+	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, self.font_map.texture.register_label)
 
-	local cr, cg, cb = self.color & 0x0000ff, self.color & 0x00ff00, self.color & 0xff0000
-
-	OPENGL32.glColor4f(cr / 255, cg / 255, cb / 255, self.alpha)
-	OPENGL32.glTranslatef(self.x, text_container.y, 0)
-
-	OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, self.font_map.texture.register)
-
-	OPENGL32.glInterleavedArrays(OPENGL32.GL_T2F_V3F, 20, self.register)
+	OPENGL32.glInterleavedArrays(OPENGL32.GL_T2F_V3F, 20, self.register_label)
 	OPENGL32.glDrawArrays(OPENGL32.GL_QUADS, 0, dword_count)
-
-	OPENGL32.glPopMatrix()
 end
 
 
@@ -399,14 +437,15 @@ setmetatable(
 	OGLHook_Sprites.TextContainer,
 	{
 		__call = function (cls, font_map, x, y, text, visible)
-			local container = cls(x, y, 0, 0, visible)
+			local container = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
+			inherit(cls, container)
 
 			container.register_label = string.format(
 				cls._register_label_template,
 				#OGLHook_Sprites.list+1
 			)
 
-			container:setColor(font_map.color)
+			container:assignFontMap(font_map)
 			if text then
 				container:setText(text)
 			end

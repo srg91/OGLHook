@@ -41,20 +41,13 @@ OGLHook_Commands._SyncWait = function (timeout)
 	end
 end
 
-COUNTER = 1
+
 OGLHook_Commands.SyncRun = function (func_text, timeout)
-	-- TODO: Do no run with debug
 	local flag_label = OGLHook_Commands._run_sync_flag_label
 	local flag_addr = OGLHook_Utils.getAddressSilent(flag_label)
 
-	debug = false
 	if flag_addr ~= 0 then
-		-- if readBytes(flag_addr, 1) == 1 then
-		-- 	OGLHook_Commands._SyncWait()
-		-- end
 		OGLHook_Utils.DeallocateRegister(flag_label)
-		debug = true
-		COUNTER = COUNTER +1
 	end
 
 	OGLHook_Utils.AllocateRegister(flag_label, 1, 'db 0')
@@ -67,19 +60,12 @@ OGLHook_Commands.SyncRun = function (func_text, timeout)
 		mov byte ptr [%s],#0
 		ret
 
-		// createthread(%s)
+		createthread(%s)
 	]], func_text, flag_label, run_label)
-
-	if not debug or COUNTER < 3 then
-		run_text = run_text .. '\r\n' .. string.format('createthread(%s)', run_label)
-	end
 
 	writeBytes(flag_addr, 1)
 	if OGLHook_Utils.AllocateRegister(run_label, 16384, run_text) then
-		if debug and COUNTER >= 3 then
-			debug_setBreakpoint(run_label, 0, bptExecute)
-			autoAssemble(string.format('createthread(%s)', run_label))
-		else
+		if not debug_isDebugging() then
 			OGLHook_Commands._SyncWait(timeout)
 		    OGLHook_Utils.DeallocateRegister(run_label)
 		end
@@ -105,26 +91,17 @@ end
 
 OGLHook_Commands.GetValueType = function (value, func_name)
 	if func_name ~= nil then
-		-- TODO: Fix this uhly hack with glOrtho
-		if string.find(func_name, 'glOrtho') ~= nil then
-			return 'double'
-		end
-
-		if string.find(func_name, 'gluPerspective') ~= nil then
-			return 'double'
-		end
-
-		if string.find(func_name, 'glClearDepth') ~= nil then
-			return 'double'
+		for _,fn in ipairs({'glOrtho', 'gluPerspective', 'glClearDepth'}) do
+			if string.find(func_name, fn) ~= nil then
+				return 'double'
+			end
 		end
 
 		if type(value) == 'number' then
-			if string.find(func_name, 'glRotatef') ~= nil then
-				return 'float'
-			end
-
-			if string.find(func_name, 'glTranslatef') ~= nil then
-				return 'float'
+			for _,fn in ipairs({'glRotatef', 'glTranslatef', 'glScalef'}) do
+				if string.find(func_name, fn) ~= nil then
+					return 'float'
+				end
 			end
 
 			local type_map = {
