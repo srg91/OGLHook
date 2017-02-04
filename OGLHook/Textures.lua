@@ -9,7 +9,7 @@ OGLHook_Textures = {
 	textures = {},
 	_image_label = 'oglh_source_image',
 	_image_decoder_label = 'oglh_image_decoder',
-	_register_label_template = 'oglh_texture_%d'
+	_register_label_template = 'oglh_texture_%s'
 }
 
 require([[autorun\OGLHook\Utils]])
@@ -547,7 +547,7 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 	OGLHook_Textures._SetupDecoder(image_addr)
 
 	texture.register_label =
-		string.format(OGLHook_Textures._register_label_template, #OGLHook_Textures.textures + 1)
+		string.format(OGLHook_Textures._register_label_template, OGLHook_Utils.UniqueSuffix())
 	OGLHook_Utils.AllocateRegister(texture.register_label, 4, 'dd 0')
 
 	OGLHook_Textures.ConvertTexture(texture, image_addr, filter_func)

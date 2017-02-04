@@ -330,7 +330,7 @@ setmetatable(
 
 OGLHook_Sprites.TextContainer = {
 	background = nil,
-	_register_label_template = 'oglh_text_container_%d',
+	_register_label_template = 'oglh_text_container_%s',
 }
 
 
@@ -477,7 +477,7 @@ setmetatable(
 
 			container.register_label = string.format(
 				cls._register_label_template,
-				#OGLHook_Sprites.list+1
+				OGLHook_Utils.UniqueSuffix()
 			)
 			container.background = background
 			container.background.text_container = container

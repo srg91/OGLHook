@@ -129,3 +129,12 @@ OGLHook_Utils.DeallocateRegisters = function(registers)
 		OGLHook_Utils._allocated_registers_list = {}
 	end
 end
+
+
+OGLHook_Utils.UniqueSuffix = function()
+	local postfix_counter = OGLHook_Utils._postfix_counter or 0
+	postfix_counter = postfix_counter + 1
+	OGLHook_Utils._postfix_counter = postfix_counter
+
+	return string.format('%d_%d', os.time(), postfix_counter)
+end
