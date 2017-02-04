@@ -116,17 +116,11 @@ local function OGLHook_BeforeUpdate()
 
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 
-	OPENGL32.glEnable(OPENGL32.GL_BLEND)
 	OPENGL32.glBlendFunc(OPENGL32.GL_SRC_ALPHA, OPENGL32.GL_ONE_MINUS_SRC_ALPHA)
-
-	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 end
 
 
 local function OGLHook_AfterUpdate()
-	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
-	OPENGL32.glDisable(OPENGL32.GL_BLEND)
-
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 	OGLHook_Commands.RunExternalCmd(OGL_HOOK._orig_opcodes)
 end

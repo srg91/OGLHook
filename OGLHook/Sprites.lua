@@ -270,6 +270,15 @@ OGLHook_Sprites.Sprite.assignTexture = function (self, texture)
 end
 
 
+OGLHook_Sprites.Sprite.before_render = function (self)
+	if self.texture then
+		OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
+		OPENGL32.glEnable(OPENGL32.GL_BLEND)
+	end
+	OGLHook_Sprites.RenderObject.before_render(self)
+end
+
+
 OGLHook_Sprites.Sprite.render = function (self)
 	if self.texture then
 		OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, self.texture.register_label)
@@ -293,6 +302,16 @@ OGLHook_Sprites.Sprite.render = function (self)
 	OPENGL32.glEnd()
 end
 
+
+OGLHook_Sprites.Sprite.after_render = function (self)
+	OGLHook_Sprites.RenderObject.after_render(self)
+	if self.texture then
+		OPENGL32.glDisable(OPENGL32.GL_BLEND)
+		OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+	end
+end
+
+
 setmetatable(
 	OGLHook_Sprites.Sprite,
 	{
@@ -310,9 +329,7 @@ setmetatable(
 
 
 OGLHook_Sprites.TextContainer = {
---	background_color = nil,
---	background_alpha = nil,
-
+	background = nil,
 	_register_label_template = 'oglh_text_container_%d',
 }
 
@@ -415,6 +432,14 @@ OGLHook_Sprites.TextContainer.setText = function(self, text)
 end
 
 
+OGLHook_Sprites.TextContainer.before_render = function (self)
+	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
+	OPENGL32.glEnable(OPENGL32.GL_BLEND)
+
+	OGLHook_Sprites.RenderObject.before_render(self)
+end
+
+
 OGLHook_Sprites.TextContainer.render = function (self)
 	if not (type(self.text) == 'string' and #self.text > 0) then
 		return false
@@ -433,10 +458,20 @@ OGLHook_Sprites.TextContainer.render = function (self)
 end
 
 
+OGLHook_Sprites.TextContainer.after_render = function (self)
+	OGLHook_Sprites.RenderObject.after_render(self)
+	OPENGL32.glDisable(OPENGL32.GL_BLEND)
+	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+end
+
+
 setmetatable(
 	OGLHook_Sprites.TextContainer,
 	{
-		__call = function (cls, font_map, x, y, text, visible)
+		__call = function (cls, font_map, x, y, text, visible, background_visible)
+			local background = OGLHook_Sprites.Sprite(x, y, nil, background_visible)
+			background:setColor(0)
+
 			local container = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
 			inherit(cls, container)
 
@@ -444,6 +479,17 @@ setmetatable(
 				cls._register_label_template,
 				#OGLHook_Sprites.list+1
 			)
+			container.background = background
+			container.background.text_container = container
+
+			container.background.before_render = function (self)
+				self:setSize(self.text_container:getSize())
+				self:setRotation(self.text_container:getRotation())
+				self:setScale(self.text_container:getScale())
+				self:setPivotPoint(self.text_container:getPivotPoint())
+
+				OGLHook_Sprites.Sprite.before_render(self)
+			end
 
 			container:assignFontMap(font_map)
 			if text then
