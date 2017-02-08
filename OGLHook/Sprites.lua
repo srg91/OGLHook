@@ -496,6 +496,9 @@ setmetatable(
 				container:setText(text)
 			end
 
+			-- container.background = OGLHook_Sprites.Sprite(x, y, nil, visible)
+			-- container.background:setAlpha(0)
+
 			table.insert(OGLHook_Sprites.list, container)
 			return container
 		end

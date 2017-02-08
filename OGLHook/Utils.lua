@@ -117,7 +117,7 @@ end
 
 OGLHook_Utils.DeallocateRegisters = function(registers)
 	if type(registers) == 'table' then
-		for i, register in ipairs(registers) do
+		for _, register in ipairs(registers) do
 			OGLHook_Utils.DeallocateRegister(register)
 		end
 	else

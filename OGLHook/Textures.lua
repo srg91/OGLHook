@@ -475,9 +475,16 @@ end
 
 
 OGLHook_Textures._GuessDecoder = function (str_header)
+	local CLSID_WICPngDecoder
+	if OGLHook_Textures._is_win81 then
+		CLSID_WICPngDecoder = 'CLSID_WICPngDecoder2'
+	else
+		CLSID_WICPngDecoder = 'CLSID_WICPngDecoder1'
+	end
+
 	local decoder_type = 'CLSID_WICBmpDecoder'
 	local decoders_map = {
-		CLSID_WICPngDecoder1 = 'PNG',
+		[CLSID_WICPngDecoder] = 'PNG',
 		CLSID_WICBmpDecoder = 'BM',
 		CLSID_WICIcoDecoder = '\000\000\001\000',
 		CLSID_WICJpegDecoder = '\255\216',
