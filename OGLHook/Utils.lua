@@ -138,3 +138,8 @@ OGLHook_Utils.UniqueSuffix = function()
 
 	return string.format('%d_%d', os.time(), postfix_counter)
 end
+
+
+OGLHook_Utils.destroy = function (self)
+	self.DeallocateRegisters()
+end

@@ -4,6 +4,8 @@ end
 
 OGLHook_Fonts = {
 	font_maps={},
+	_register_label_template='oglh_font_map_%s',
+	_image_register_label_template='oglh_font_map_image_%s',
 }
 
 require([[autorun\OGLHook\Utils]])
@@ -31,6 +33,20 @@ OGLHook_Fonts._normalizeAlpha = function ()
 	]])
 
 	OGLHook_Commands.RunExternalCmd(command)
+end
+
+
+OGLHook_Fonts.destroyFontMap = function (fontMap)
+	if not fontMap then
+		return
+	end
+
+	if fontMap.texture then
+		fontMap.texture:destroy()
+	end
+
+	OGLHook_Utils.DeallocateRegister(fontMap.register_label)
+	OGLHook_Fonts.font_maps[font_map.register_label] = nil
 end
 
 
@@ -86,16 +102,18 @@ OGLHook_Fonts.generateFontMap = function (font)
 
 	os.remove(file_path)
 
-	local font_map_index = #OGLHook_Fonts.font_maps + 1
+	local font_map_suffix = OGLHook_Utils.UniqueSuffix()
 
-	local image_label = string.format('oglh_font_map_image_%d', font_map_index)
-	font_map.label = string.format('oglh_font_map_%d', font_map_index)
+	local image_label =
+		string.format(OGLHook_Fonts._image_register_label_template, font_map_suffix)
+	font_map.register_label =
+		string.format(OGLHook_Fonts._register_label_template, font_map_suffix)
 
 	OGLHook_Utils.AllocateRegister(image_label, file_stream.size+4)
-	OGLHook_Utils.AllocateRegister(font_map.label, 4+4+8*#char_info)
+	OGLHook_Utils.AllocateRegister(font_map.register_label, 4+4+8*#char_info)
 
 	local image_addr = getAddress(image_label)
-	font_map.addr = getAddress(font_map.label)
+	font_map.addr = getAddress(font_map.register_label)
 
 	writeInteger(image_addr, file_stream.size)
 	writeBytes(image_addr + 4, file_stream.read(file_stream.size))
@@ -106,6 +124,6 @@ OGLHook_Fonts.generateFontMap = function (font)
 
 	OGLHook_Utils.DeallocateRegister(image_label)
 
-	table.insert(OGLHook_Fonts.font_maps, font_map)
+	OGLHook_Fonts.font_maps[font_map.register_label] = font_map
 	return font_map
 end

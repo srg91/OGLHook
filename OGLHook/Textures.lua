@@ -5,7 +5,6 @@ if OGLHook_Textures ~= nil then
 end
 
 OGLHook_Textures = {
-	count = 0,
 	textures = {},
 	_image_label = 'oglh_source_image',
 	_image_decoder_label = 'oglh_image_decoder',
@@ -28,8 +27,6 @@ OGLHook_Textures.InitLoadTextures = function()
     		return false
   		end
 	end
-
-	OGLHook_Textures.count = 0
 
 	local guids = {
 		CLSID_WICPngDecoder1 = {0x389ea17b, 0x5078, 0x4cde, 0xb6, 0xef, 0x25, 0xc1, 0x51, 0x75, 0xc7, 0x51},
@@ -532,6 +529,16 @@ OGLHook_Textures._AllocateImageInGame = function (file_path)
 end
 
 
+OGLHook_Textures.DestroyTexture = function (texture)
+	if not texture then
+		return
+	end
+
+	OGLHook_Utils.DeallocateRegister(texture.register_label)
+	OGLHook_Textures.textures[texture.register_label] = nil
+end
+
+
 OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_func)
 	if not OGLHook_Textures.consts_initialized then
 		if not OGLHook_Textures.InitLoadTextures() then
@@ -539,7 +546,10 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 		end
 	end
 
-	local texture = {}
+	local texture = {
+		destroy = OGLHook_Textures.DestroyTexture,
+	}
+
 	local image_addr = file_path_or_memory_address
 	local deallocate_memory_image = false
 
@@ -553,8 +563,10 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 
 	OGLHook_Textures._SetupDecoder(image_addr)
 
-	texture.register_label =
-		string.format(OGLHook_Textures._register_label_template, OGLHook_Utils.UniqueSuffix())
+	texture.register_label = string.format(
+		OGLHook_Textures._register_label_template,
+		OGLHook_Utils.UniqueSuffix()
+	)
 	OGLHook_Utils.AllocateRegister(texture.register_label, 4, 'dd 0')
 
 	OGLHook_Textures.ConvertTexture(texture, image_addr, filter_func)
@@ -562,8 +574,19 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 	if deallocate_memory_image then
 		OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_label)
 	end
-	OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_decoder_label, 4, decoder_opcode)
+	OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_decoder_label)
 
-	table.insert(OGLHook_Textures.textures, texture)
+	OGLHook_Textures.textures[texture.register_label] = texture
 	return texture
+end
+
+
+OGLHook_Textures.destroy = function (self)
+	for _,texture in pairs(self.textures) do
+		if texture then
+			texture:destroy()
+		end
+	end
+
+	self.consts_initialized = false
 end

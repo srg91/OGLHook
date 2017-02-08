@@ -20,17 +20,20 @@ OGL_HOOK = nil
 
 
 local function OGLHook_InitMemory()
-	return autoAssemble([[
-    	globalalloc(oglh_hook_code,16384)
-    	globalalloc(oglh_window_hdc, 4)
-		globalalloc(oglh_parent_context, 4)
-		globalalloc(oglh_context, 4)
-		globalalloc(oglh_thread_context, 4)
-		globalalloc(oglh_initialized, 1)
-		globalalloc(oglh_window_rect, 20)
-		globalalloc(oglh_image_handle, 4)
-		globalalloc(oglh_image_ptr, 4)
-	]])
+	OGLHook_Utils.AllocateRegister(oglh_hook_code, 16384)
+	OGLHook_Utils.AllocateRegister(oglh_window_hdc, 4)
+
+	OGLHook_Utils.AllocateRegister(oglh_parent_context, 4)
+	OGLHook_Utils.AllocateRegister(oglh_context, 4)
+	OGLHook_Utils.AllocateRegister(oglh_thread_context, 4)
+
+	OGLHook_Utils.AllocateRegister(oglh_initialized, 1)
+
+	OGLHook_Utils.AllocateRegister(oglh_image_ptr, 4)
+	OGLHook_Utils.AllocateRegister(oglh_image_handle, 4)
+	OGLHook_Utils.AllocateRegister(oglh_window_rect, 20)
+
+	return true
 end
 
 
@@ -340,24 +343,25 @@ local function OGLHook_Destroy(...)
 		return
 	end
 
-	local symbols = {
-		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context',
-		'oglh_context', 'oglh_initialized', 'oglh_window_rect',
-		'oglh_image_handle', 'oglh_image_ptr'
+	local units = {
+		'Sprites', 'Textures', 'Fonts', 'Commands', 'Utils', 'Errors', 'Consts'
 	}
 
-	local destroy_cmd = [[
-		dealloc(%s)
-		unregistersymbol(%s)
-	]]
+	for _,unit_name in ipairs(units) do
+		local olgh_unit_name = 'OGLHook_' .. unit_name
+		local unit_table = _G[olgh_unit_name]
 
-	for i, v in ipairs(symbols) do
-		if OGLHook_Utils.getAddressSilent(v) ~= 0 then
-			autoAssemble(string.format(destroy_cmd, v, v))
+		if unit_table.destroy then
+			unit_table:destroy()
 		end
+
+		_G[olgh_unit_name] = nil
 	end
 
-	OGLHook_Utils.DeallocateRegisters()
+	for i=#units,1,-1 do
+		local unit_path = [[autorun\OGLHook\]] .. units[i]
+		require(unit_path)
+	end
 end
 
 
