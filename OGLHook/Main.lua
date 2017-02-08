@@ -20,20 +20,28 @@ OGL_HOOK = nil
 
 
 local function OGLHook_InitMemory()
-	OGLHook_Utils.AllocateRegister(oglh_hook_code, 16384)
-	OGLHook_Utils.AllocateRegister(oglh_window_hdc, 4)
+	OGLHook_Utils.AllocateRegister('oglh_hook_code', 16384)
+	OGLHook_Utils.AllocateRegister('oglh_window_hdc', 4)
 
-	OGLHook_Utils.AllocateRegister(oglh_parent_context, 4)
-	OGLHook_Utils.AllocateRegister(oglh_context, 4)
-	OGLHook_Utils.AllocateRegister(oglh_thread_context, 4)
+	OGLHook_Utils.AllocateRegister('oglh_parent_context', 4)
+	OGLHook_Utils.AllocateRegister('oglh_context', 4)
+	OGLHook_Utils.AllocateRegister('oglh_thread_context', 4)
 
-	OGLHook_Utils.AllocateRegister(oglh_initialized, 1)
+	OGLHook_Utils.AllocateRegister('oglh_initialized', 1, 'db 0')
 
-	OGLHook_Utils.AllocateRegister(oglh_image_ptr, 4)
-	OGLHook_Utils.AllocateRegister(oglh_image_handle, 4)
-	OGLHook_Utils.AllocateRegister(oglh_window_rect, 20)
+	OGLHook_Utils.AllocateRegister('oglh_image_ptr', 4)
+	OGLHook_Utils.AllocateRegister('oglh_image_handle', 4)
+	OGLHook_Utils.AllocateRegister('oglh_window_rect', 20)
 
 	return true
+end
+
+
+local function OGLHook_ClearHook(ogl_hook)
+	local command = [[
+		OPENGL32.wglSwapBuffers:
+	]] .. ogl_hook._orig_opcodes
+	return autoAssemble(command)
 end
 
 
@@ -105,11 +113,6 @@ local function OGLHook_BeforeUpdate()
 		label(initialized)
 		label(initialization)
 	]])
-
-	-- OGLHook_Commands.RunExternalCmd([[
-	-- 	push [esp+4]
-	-- 	pop [oglh_window_hdc]
-	-- ]])
 
 	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
 
@@ -260,7 +263,6 @@ local function OLGHook_CreteFakeWindow()
 	OGLHook_Utils.AllocateRegister('oglh_current_hinstance', 4)
 	OGLHook_Utils.AllocateRegister('oglh_thread_hwnd', 4)
 	OGLHook_Utils.AllocateRegister('oglh_thread_hdc', 4)
---	OGLHook_Utils.AllocateRegister('oglh_thread_context', 4)
 
 	OGLHook_Commands.RunExternalCmd('call GetModuleHandleA', 0, 'oglh_current_hinstance')
 
@@ -282,6 +284,24 @@ local function OLGHook_CreteFakeWindow()
 	OGLHook_Commands.RunExternalCmd('call ChoosePixelFormat', {'[oglh_thread_hdc]', 'oglh_fake_wnd_pf'})
 
 	OGLHook_Commands.RunExternalCmd('call SetPixelFormat', {'[oglh_thread_hdc]', 'eax', 'oglh_fake_wnd_pf'})
+end
+
+
+local function OGLHook_Destroy_Fake_Window()
+	if OGLHook_Utils.getAddressSilent('oglh_wnd_class_name') == 0 then
+		return
+	end
+
+	local command = [[
+		push [oglh_thread_hwnd]
+		call DestroyWindow
+
+		push [oglh_current_hinstance]
+		push oglh_fake_wnd_class
+		call UnregisterClassA
+	]]
+
+	OGLHook_Commands.SyncRun(command)
 end
 
 
@@ -343,8 +363,11 @@ local function OGLHook_Destroy(...)
 		return
 	end
 
+	OGLHook_ClearHook(self)
+	OGLHook_Destroy_Fake_Window()
+
 	local units = {
-		'Sprites', 'Textures', 'Fonts', 'Commands', 'Utils', 'Errors', 'Consts'
+		'Sprites', 'Textures', 'Fonts', 'Commands', 'Utils', 'Errors', 'Const'
 	}
 
 	for _,unit_name in ipairs(units) do
@@ -359,8 +382,9 @@ local function OGLHook_Destroy(...)
 	end
 
 	for i=#units,1,-1 do
-		local unit_path = [[autorun\OGLHook\]] .. units[i]
-		require(unit_path)
+		local oglh_unit_path = [[autorun\OGLHook\]] .. units[i]
+		package.loaded[oglh_unit_path] = nil
+		require(oglh_unit_path)
 	end
 end
 

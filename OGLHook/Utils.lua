@@ -1,7 +1,3 @@
-if OGLHook_Utils ~= nil then
-	return
-end
-
 OGLHook_Utils = {
 	_allocated_registers_list = {},
 }

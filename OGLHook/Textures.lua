@@ -1,9 +1,5 @@
 -- https://code.logos.com/blog/2008/09/displaying_a_splash_screen_with_c_part_i.html
 
-if OGLHook_Textures ~= nil then
-	return
-end
-
 OGLHook_Textures = {
 	textures = {},
 	_image_label = 'oglh_source_image',

@@ -1,7 +1,3 @@
-if OGLHook_Fonts ~= nil then
-	return
-end
-
 OGLHook_Fonts = {
 	font_maps={},
 	_register_label_template='oglh_font_map_%s',
@@ -102,12 +98,12 @@ OGLHook_Fonts.generateFontMap = function (font)
 
 	os.remove(file_path)
 
-	local font_map_suffix = OGLHook_Utils.UniqueSuffix()
+	local font_map_id = OGLHook_Utils.UniqueSuffix()
 
 	local image_label =
-		string.format(OGLHook_Fonts._image_register_label_template, font_map_suffix)
+		string.format(OGLHook_Fonts._image_register_label_template, font_map_id)
 	font_map.register_label =
-		string.format(OGLHook_Fonts._register_label_template, font_map_suffix)
+		string.format(OGLHook_Fonts._register_label_template, font_map_id)
 
 	OGLHook_Utils.AllocateRegister(image_label, file_stream.size+4)
 	OGLHook_Utils.AllocateRegister(font_map.register_label, 4+4+8*#char_info)

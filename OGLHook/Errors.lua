@@ -1,7 +1,3 @@
-if OGLHook_Errors ~= nil then
-	return
-end
-
 OGLHook_Errors = {
 	LAST = nil,
 

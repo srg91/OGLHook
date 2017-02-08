@@ -1,8 +1,4 @@
 -- https://github.com/duncanspumpkin/NeHeNASM
-if OGLHook_Const ~= nil then
-	return
-end
-
 
 local OPENGL32_CONSTS = {
 	GL_VERSION_1_1 = 1,

@@ -1,7 +1,3 @@
-if OGLHook_Sprites ~= nil then
-	return
-end
-
 OGLHook_Sprites = {
 	list = {}
 }
@@ -312,7 +308,7 @@ OGLHook_Sprites.Sprite.after_render = function (self)
 end
 
 
-OGLHook_Sprites.Sprite.destory = function (self)
+OGLHook_Sprites.Sprite.destroy = function (self)
 	if self.texture then
 		self.texture:destroy()
 	end
@@ -336,7 +332,7 @@ OGLHook_Sprites.Sprite.new = function (cls, x, y, texture, visible)
 	return sprite
 end
 
-setmetatable(OGLHook_Sprites.Sprite, {__call = OGLHook_Sprite.Sprite.new})
+setmetatable(OGLHook_Sprites.Sprite, {__call = OGLHook_Sprites.Sprite.new})
 
 
 OGLHook_Sprites.TextContainer = {
@@ -476,7 +472,7 @@ OGLHook_Sprites.TextContainer.after_render = function (self)
 end
 
 
-OGLHook_Sprites.TextContainer.destory = function (self)
+OGLHook_Sprites.TextContainer.destroy = function (self)
 	if self.background then
 		self.background:destroy()
 	end
