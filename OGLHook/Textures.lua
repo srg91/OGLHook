@@ -1,15 +1,10 @@
 -- https://code.logos.com/blog/2008/09/displaying_a_splash_screen_with_c_part_i.html
 
-if OGLHook_Textures ~= nil then
-	return
-end
-
 OGLHook_Textures = {
-	count = 0,
 	textures = {},
 	_image_label = 'oglh_source_image',
 	_image_decoder_label = 'oglh_image_decoder',
-	_register_label_template = 'oglh_texture_%d'
+	_register_label_template = 'oglh_texture_%s'
 }
 
 require([[autorun\OGLHook\Utils]])
@@ -22,14 +17,13 @@ OGLHook_Textures.InitLoadTextures = function()
 		return true
 	end
 
-	if OGLHook_Utils.getAddressSilent('windowscodecs.dll') == 0 then
-  		if not injectDLL('windowscodecs.dll') then
-    		OGLHook_Errors.setError(OGLHook_Errors.FAIL_TO_LOAD_DLL)
-    		return false
-  		end
+	local codecs_dll = 'windowscodecs.dll'
+	if OGLHook_Utils.getAddressSilent(codecs_dll) == 0 then
+		if not injectDLL(codecs_dll) then
+			OGLHook_Errors.raiseError('Cannot load DLL "%s"', codecs_dll)
+			return false
+		end
 	end
-
-	OGLHook_Textures.count = 0
 
 	local guids = {
 		CLSID_WICPngDecoder1 = {0x389ea17b, 0x5078, 0x4cde, 0xb6, 0xef, 0x25, 0xc1, 0x51, 0x75, 0xc7, 0x51},
@@ -475,9 +469,16 @@ end
 
 
 OGLHook_Textures._GuessDecoder = function (str_header)
+	local CLSID_WICPngDecoder
+	if OGLHook_Textures._is_win81 then
+		CLSID_WICPngDecoder = 'CLSID_WICPngDecoder2'
+	else
+		CLSID_WICPngDecoder = 'CLSID_WICPngDecoder1'
+	end
+
 	local decoder_type = 'CLSID_WICBmpDecoder'
 	local decoders_map = {
-		CLSID_WICPngDecoder1 = 'PNG',
+		[CLSID_WICPngDecoder] = 'PNG',
 		CLSID_WICBmpDecoder = 'BM',
 		CLSID_WICIcoDecoder = '\000\000\001\000',
 		CLSID_WICJpegDecoder = '\255\216',
@@ -525,6 +526,16 @@ OGLHook_Textures._AllocateImageInGame = function (file_path)
 end
 
 
+OGLHook_Textures.DestroyTexture = function (texture)
+	if not texture then
+		return
+	end
+
+	OGLHook_Utils.DeallocateRegister(texture.register_label)
+	OGLHook_Textures.textures[texture.register_label] = nil
+end
+
+
 OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_func)
 	if not OGLHook_Textures.consts_initialized then
 		if not OGLHook_Textures.InitLoadTextures() then
@@ -532,7 +543,10 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 		end
 	end
 
-	local texture = {}
+	local texture = {
+		destroy = OGLHook_Textures.DestroyTexture,
+	}
+
 	local image_addr = file_path_or_memory_address
 	local deallocate_memory_image = false
 
@@ -546,8 +560,10 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 
 	OGLHook_Textures._SetupDecoder(image_addr)
 
-	texture.register_label =
-		string.format(OGLHook_Textures._register_label_template, #OGLHook_Textures.textures + 1)
+	texture.register_label = string.format(
+		OGLHook_Textures._register_label_template,
+		OGLHook_Utils.UniqueSuffix()
+	)
 	OGLHook_Utils.AllocateRegister(texture.register_label, 4, 'dd 0')
 
 	OGLHook_Textures.ConvertTexture(texture, image_addr, filter_func)
@@ -555,8 +571,19 @@ OGLHook_Textures.LoadTexture = function (file_path_or_memory_address, filter_fun
 	if deallocate_memory_image then
 		OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_label)
 	end
-	OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_decoder_label, 4, decoder_opcode)
+	OGLHook_Utils.DeallocateRegister(OGLHook_Textures._image_decoder_label)
 
-	table.insert(OGLHook_Textures.textures, texture)
+	OGLHook_Textures.textures[texture.register_label] = texture
 	return texture
+end
+
+
+OGLHook_Textures.destroy = function (self)
+	for _,texture in pairs(self.textures) do
+		if texture then
+			texture:destroy()
+		end
+	end
+
+	self.consts_initialized = false
 end

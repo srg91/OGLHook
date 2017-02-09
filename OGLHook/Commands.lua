@@ -1,7 +1,3 @@
-if OGLHook_Commands ~= nil then
-	return
-end
-
 OGLHook_Commands = {
 	commands_stack = {},
 	commands_stack_text = '',
@@ -268,3 +264,37 @@ end
 
 setmetatable(OPENGL32, {__index=OGLHook_Commands._BaseFakeAccess(OGLHook_Const.OPENGL32)})
 setmetatable(GLU32, {__index=OGLHook_Commands._BaseFakeAccess(OGLHook_Const.GLU32)})
+
+
+OGLHook_Commands.isWin81 = function()
+	OGLHook_Utils.AllocateRegister('oglh_osvi_struct', 284)
+	OGLHook_Utils.AllocateRegister('oglh_is_win_81', 4)
+
+	local func_text = [[
+		push #284
+		push 0
+		push oglh_osvi_struct
+		call memset
+		add esp,0C
+
+		mov [oglh_osvi_struct],#284
+		mov [oglh_osvi_struct+4],#6
+		mov [oglh_osvi_struct+8],#3
+
+		// VER_GREATER_EQUAL for VER_MAJORVERSION and VER_MINORVERSION
+		push 80000000
+		push 0000001B
+		// VER_MAJORVERSION | VER_MINORVERSION
+		push #3
+		push oglh_osvi_struct
+		call VerifyVersionInfoW
+		mov [oglh_is_win_81],eax
+	]]
+
+	OGLHook_Commands.SyncRun(func_text)
+
+	local result = readInteger(getAddress('oglh_is_win_81')) == 1
+
+	-- OGLHook_Utils.DeallocateRegisters({'oglh_osvi_struct', 'oglh_is_win_81'})
+	return result
+end

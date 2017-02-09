@@ -1,7 +1,3 @@
-if OGLHook_Utils ~= nil then
-	return
-end
-
 OGLHook_Utils = {
 	_allocated_registers_list = {},
 }
@@ -16,10 +12,8 @@ OGLHook_Utils.getAddressSilent = function (address_str)
 	errorOnLookupFailure(prev_error_state)
 
 	if address ~= nil and address ~= 0 then
-		OGLHook_Errors.clearError()
 		return address
 	else
-		OGLHook_Errors.setError(OGLHook_Errors.ADDRESS_NOT_FOUND)
 		return 0
 	end
 end
@@ -40,11 +34,9 @@ end
 OGLHook_Utils.LockRegister = function(register)
 	if not OGLHook_Utils._allocated_registers_list[register] then
 		OGLHook_Utils._allocated_registers_list[register] = true
-
-		OGLHook_Errors.clearError()
 		return true
 	else
-		OGLHook_Errors.setError(OGLHook_Errors.LOCK_REGISTER_ERROR)
+		OGLHook_Errors.raiseWarning('Register "%s" already locked', register)
 		return false
 	end
 end
@@ -52,12 +44,10 @@ end
 
 OGLHook_Utils.UnlockRegister = function(register)
 	if not OGLHook_Utils._allocated_registers_list[register] then
-		OGLHook_Errors.setError(OGLHook_Errors.UNLOCK_REGISTER_ERROR)
+		OGLHook_Errors.raiseWarning('Register "%s" already unlocked', register)
 		return false
 	else
 		OGLHook_Utils._allocated_registers_list[register] = nil
-
-		OGLHook_Errors.clearError()
 		return true
 	end
 end
@@ -65,7 +55,7 @@ end
 
 OGLHook_Utils.AllocateRegister = function(register, size, data)
 	if not (register and size) then
-		OGLHook_Errors.setError(OGLHook_Errors.NOT_ALL_PARAMS)
+		OGLHook_Errors.raiseError('You must specify register and register size')
 		return false
 	end
 
@@ -86,10 +76,9 @@ OGLHook_Utils.AllocateRegister = function(register, size, data)
 
 	if not autoAssemble(command) then
 		OGLHook_Utils.UnlockRegister(register)
-		OGLHook_Errors.setError(OGLHook_Errors.ALLOCATE_REGISTER_ERROR)
+		OGLHook_Errors.raiseError('Cannot allocate register "%s"', register)
 		return false
 	else
-		OGLHook_Errors.clearError()
 		return true
 	end
 end
@@ -106,10 +95,9 @@ OGLHook_Utils.DeallocateRegister = function(register)
 	]], register, register)
 
 	if not autoAssemble(command) then
-		OGLHook_Errors.setError(OGLHook_Errors.DEALLOCATE_REGISTER_ERROR)
+		OGLHook_Errors.raiseWarning('Cannot deallocate register "%s"', register)
 		return false
 	else
-		OGLHook_Errors.clearError()
 		return true
 	end
 end
@@ -117,7 +105,7 @@ end
 
 OGLHook_Utils.DeallocateRegisters = function(registers)
 	if type(registers) == 'table' then
-		for i, register in ipairs(registers) do
+		for _, register in ipairs(registers) do
 			OGLHook_Utils.DeallocateRegister(register)
 		end
 	else
@@ -128,4 +116,18 @@ OGLHook_Utils.DeallocateRegisters = function(registers)
 		end
 		OGLHook_Utils._allocated_registers_list = {}
 	end
+end
+
+
+OGLHook_Utils.UniqueSuffix = function()
+	local postfix_counter = OGLHook_Utils._postfix_counter or 0
+	postfix_counter = postfix_counter + 1
+	OGLHook_Utils._postfix_counter = postfix_counter
+
+	return string.format('%d_%d', os.time(), postfix_counter)
+end
+
+
+OGLHook_Utils.destroy = function (self)
+	self.DeallocateRegisters()
 end

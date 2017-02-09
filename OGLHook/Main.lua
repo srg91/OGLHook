@@ -19,18 +19,33 @@ local OGLH_ADDR_NAME = OPENGL32_NAME .. '.wglSwapBuffers'
 OGL_HOOK = nil
 
 
-local function OGLHook_InitMemory()
-	return autoAssemble([[
-    	globalalloc(oglh_hook_code,16384)
-    	globalalloc(oglh_window_hdc, 4)
-		globalalloc(oglh_parent_context, 4)
-		globalalloc(oglh_context, 4)
-		globalalloc(oglh_thread_context, 4)
-		globalalloc(oglh_initialized, 1)
-		globalalloc(oglh_window_rect, 20)
-		globalalloc(oglh_image_handle, 4)
-		globalalloc(oglh_image_ptr, 4)
-	]])
+local function OGLHook_InitMemory(hook_size)
+	if not hook_size then
+		hook_size = 16 * 1024
+	end
+
+	OGLHook_Utils.AllocateRegister('oglh_hook_code', hook_size)
+	OGLHook_Utils.AllocateRegister('oglh_window_hdc', 4)
+
+	OGLHook_Utils.AllocateRegister('oglh_parent_context', 4)
+	OGLHook_Utils.AllocateRegister('oglh_context', 4)
+	OGLHook_Utils.AllocateRegister('oglh_thread_context', 4)
+
+	OGLHook_Utils.AllocateRegister('oglh_initialized', 1, 'db 0')
+
+	OGLHook_Utils.AllocateRegister('oglh_image_ptr', 4)
+	OGLHook_Utils.AllocateRegister('oglh_image_handle', 4)
+	OGLHook_Utils.AllocateRegister('oglh_window_rect', 20)
+
+	return true
+end
+
+
+local function OGLHook_ClearHook(ogl_hook)
+	local command = [[
+		OPENGL32.wglSwapBuffers:
+	]] .. ogl_hook._orig_opcodes
+	return autoAssemble(command)
 end
 
 
@@ -103,11 +118,6 @@ local function OGLHook_BeforeUpdate()
 		label(initialization)
 	]])
 
-	-- OGLHook_Commands.RunExternalCmd([[
-	-- 	push [esp+4]
-	-- 	pop [oglh_window_hdc]
-	-- ]])
-
 	OPENGL32.wglGetCurrentContext('->', 'oglh_parent_context')
 
 	if OGL_HOOK._initialization_part ~= nil then
@@ -116,17 +126,11 @@ local function OGLHook_BeforeUpdate()
 
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_context]')
 
-	OPENGL32.glEnable(OPENGL32.GL_BLEND)
 	OPENGL32.glBlendFunc(OPENGL32.GL_SRC_ALPHA, OPENGL32.GL_ONE_MINUS_SRC_ALPHA)
-
-	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
 end
 
 
 local function OGLHook_AfterUpdate()
-	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
-	OPENGL32.glDisable(OPENGL32.GL_BLEND)
-
 	OPENGL32.wglMakeCurrent('[oglh_window_hdc]', '[oglh_parent_context]')
 	OGLHook_Commands.RunExternalCmd(OGL_HOOK._orig_opcodes)
 end
@@ -263,7 +267,6 @@ local function OLGHook_CreteFakeWindow()
 	OGLHook_Utils.AllocateRegister('oglh_current_hinstance', 4)
 	OGLHook_Utils.AllocateRegister('oglh_thread_hwnd', 4)
 	OGLHook_Utils.AllocateRegister('oglh_thread_hdc', 4)
---	OGLHook_Utils.AllocateRegister('oglh_thread_context', 4)
 
 	OGLHook_Commands.RunExternalCmd('call GetModuleHandleA', 0, 'oglh_current_hinstance')
 
@@ -285,6 +288,24 @@ local function OLGHook_CreteFakeWindow()
 	OGLHook_Commands.RunExternalCmd('call ChoosePixelFormat', {'[oglh_thread_hdc]', 'oglh_fake_wnd_pf'})
 
 	OGLHook_Commands.RunExternalCmd('call SetPixelFormat', {'[oglh_thread_hdc]', 'eax', 'oglh_fake_wnd_pf'})
+end
+
+
+local function OGLHook_Destroy_Fake_Window()
+	if OGLHook_Utils.getAddressSilent('oglh_wnd_class_name') == 0 then
+		return
+	end
+
+	local command = [[
+		push [oglh_thread_hwnd]
+		call DestroyWindow
+
+		push [oglh_current_hinstance]
+		push oglh_fake_wnd_class
+		call UnregisterClassA
+	]]
+
+	OGLHook_Commands.SyncRun(command)
 end
 
 
@@ -346,26 +367,40 @@ local function OGLHook_Destroy(...)
 		return
 	end
 
-	local symbols = {
-		'oglh_hook_code', 'oglh_window_hdc', 'oglh_parent_context',
-		'oglh_context', 'oglh_initialized', 'oglh_window_rect',
-		'oglh_image_handle', 'oglh_image_ptr'
+	OGLHook_ClearHook(self)
+	OGLHook_Destroy_Fake_Window()
+
+	local units = {
+		'Sprites', 'Textures', 'Fonts', 'Commands', 'Utils', 'Errors', 'Const'
 	}
 
-	local destroy_cmd = [[
-		dealloc(%s)
-		unregistersymbol(%s)
-	]]
+	for _,unit_name in ipairs(units) do
+		local olgh_unit_name = 'OGLHook_' .. unit_name
+		local unit_table = _G[olgh_unit_name]
 
-	for i, v in ipairs(symbols) do
-		if OGLHook_Utils.getAddressSilent(v) ~= 0 then
-			autoAssemble(string.format(destroy_cmd, v, v))
+		if unit_table.destroy then
+			unit_table:destroy()
 		end
+
+		_G[olgh_unit_name] = nil
 	end
 
-	OGLHook_Utils.DeallocateRegisters()
+	for i=#units,1,-1 do
+		local oglh_unit_path = [[autorun\OGLHook\]] .. units[i]
+		package.loaded[oglh_unit_path] = nil
+		require(oglh_unit_path)
+	end
 end
 
+
+function OGLHook_isActive(self)
+	local init_addr = OGLHook_Utils.getAddressSilent('oglh_initialized')
+	if init_addr == 0 then
+		return false
+	end
+
+	return readBytes(init_addr, 1, false) == 1
+end
 
 -- Public --
 function OGLHook_SimpleOrtho(x, y, width, height, znear, zfar)
@@ -412,7 +447,7 @@ function OGLHook_SimplePerspective(fov, aspect_ratio, znear, zfar)
 end
 
 
-function OGLHook_Create(onInit)
+function OGLHook_Create(onInit, hook_size)
 	reinitializeSymbolhandler()
 
 	local hook_address = OGLHook_Utils.getAddressSilent(OGLH_ADDR_NAME)
@@ -424,7 +459,7 @@ function OGLHook_Create(onInit)
 		OGL_HOOK:destroy()
 	end
 
-	if not OGLHook_InitMemory() then
+	if not OGLHook_InitMemory(hook_size) then
 		return -2
 	end
 
@@ -447,6 +482,8 @@ function OGLHook_Create(onInit)
 
 		generateFontMap = OGLHook_Fonts.generateFontMap,
 		createTextContainer = OGLHook_Sprites.TextContainer,
+
+		isActive = OGLHook_isActive,
 	}
 
 	if not OGL_HOOK:init() then

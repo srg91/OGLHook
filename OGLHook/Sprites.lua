@@ -1,7 +1,3 @@
-if OGLHook_Sprites ~= nil then
-	return
-end
-
 OGLHook_Sprites = {
 	list = {}
 }
@@ -270,6 +266,15 @@ OGLHook_Sprites.Sprite.assignTexture = function (self, texture)
 end
 
 
+OGLHook_Sprites.Sprite.before_render = function (self)
+	if self.texture then
+		OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
+		OPENGL32.glEnable(OPENGL32.GL_BLEND)
+	end
+	OGLHook_Sprites.RenderObject.before_render(self)
+end
+
+
 OGLHook_Sprites.Sprite.render = function (self)
 	if self.texture then
 		OPENGL32.glBindTexture(OPENGL32.GL_TEXTURE_2D, self.texture.register_label)
@@ -293,27 +298,46 @@ OGLHook_Sprites.Sprite.render = function (self)
 	OPENGL32.glEnd()
 end
 
-setmetatable(
-	OGLHook_Sprites.Sprite,
-	{
-		__call = function (cls, x, y, texture, visible)
-			local sprite = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
-			inherit(cls, sprite)
 
-			sprite:assignTexture(texture)
+OGLHook_Sprites.Sprite.after_render = function (self)
+	OGLHook_Sprites.RenderObject.after_render(self)
+	if self.texture then
+		OPENGL32.glDisable(OPENGL32.GL_BLEND)
+		OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+	end
+end
 
-			table.insert(OGLHook_Sprites.list, sprite)
-			return sprite
+
+OGLHook_Sprites.Sprite.destroy = function (self)
+	if self.texture then
+		self.texture:destroy()
+	end
+
+	for i,ro in ipairs(OGLHook_Sprites.list) do
+		if ro == self then
+			OGLHook_Sprites.list[i] = nil
+			break
 		end
-	}
-)
+	end
+end
+
+
+OGLHook_Sprites.Sprite.new = function (cls, x, y, texture, visible)
+	local sprite = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
+	inherit(cls, sprite)
+
+	sprite:assignTexture(texture)
+
+	table.insert(OGLHook_Sprites.list, sprite)
+	return sprite
+end
+
+setmetatable(OGLHook_Sprites.Sprite, {__call = OGLHook_Sprites.Sprite.new})
 
 
 OGLHook_Sprites.TextContainer = {
---	background_color = nil,
---	background_alpha = nil,
-
-	_register_label_template = 'oglh_text_container_%d',
+	background = nil,
+	_register_label_template = 'oglh_text_container_%s',
 }
 
 
@@ -415,6 +439,14 @@ OGLHook_Sprites.TextContainer.setText = function(self, text)
 end
 
 
+OGLHook_Sprites.TextContainer.before_render = function (self)
+	OPENGL32.glEnable(OPENGL32.GL_TEXTURE_2D)
+	OPENGL32.glEnable(OPENGL32.GL_BLEND)
+
+	OGLHook_Sprites.RenderObject.before_render(self)
+end
+
+
 OGLHook_Sprites.TextContainer.render = function (self)
 	if not (type(self.text) == 'string' and #self.text > 0) then
 		return false
@@ -433,25 +465,66 @@ OGLHook_Sprites.TextContainer.render = function (self)
 end
 
 
+OGLHook_Sprites.TextContainer.after_render = function (self)
+	OGLHook_Sprites.RenderObject.after_render(self)
+	OPENGL32.glDisable(OPENGL32.GL_BLEND)
+	OPENGL32.glDisable(OPENGL32.GL_TEXTURE_2D)
+end
+
+
+OGLHook_Sprites.TextContainer.destroy = function (self)
+	if self.background then
+		self.background:destroy()
+	end
+
+	for i,ro in ipairs(OGLHook_Sprites.list) do
+		if ro == self then
+			OGLHook_Sprites.list[i] = nil
+			break
+		end
+	end
+end
+
+
+OGLHook_Sprites.TextContainer.new = function (cls, font_map, x, y, text, visible, background_visible)
+	local background = OGLHook_Sprites.Sprite(x, y, nil, background_visible)
+
+	local container = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
+	inherit(cls, container)
+
+	container.register_label = string.format(
+		cls._register_label_template,
+		OGLHook_Utils.UniqueSuffix()
+	)
+	container.background = background
+	container.background.text_container = container
+
+	container.background.before_render = function (self)
+		self:setSize(self.text_container:getSize())
+		self:setRotation(self.text_container:getRotation())
+		self:setScale(self.text_container:getScale())
+		self:setPivotPoint(self.text_container:getPivotPoint())
+
+		OGLHook_Sprites.Sprite.before_render(self)
+	end
+
+	container:assignFontMap(font_map)
+	if text then
+		container:setText(text)
+	end
+
+	table.insert(OGLHook_Sprites.list, container)
+	return container
+end
+
 setmetatable(
 	OGLHook_Sprites.TextContainer,
-	{
-		__call = function (cls, font_map, x, y, text, visible)
-			local container = OGLHook_Sprites.RenderObject:new(x, y, 0, 0, visible)
-			inherit(cls, container)
-
-			container.register_label = string.format(
-				cls._register_label_template,
-				#OGLHook_Sprites.list+1
-			)
-
-			container:assignFontMap(font_map)
-			if text then
-				container:setText(text)
-			end
-
-			table.insert(OGLHook_Sprites.list, container)
-			return container
-		end
-	}
+	{__call = OGLHook_Sprites.TextContainer.new}
 )
+
+
+OGLHook_Sprites.destroy = function (self)
+	for i,ro in ipairs(self.list) do
+		ro:destroy()
+	end
+end
