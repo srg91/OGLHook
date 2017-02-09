@@ -63,7 +63,7 @@ OGLHook_Commands.SyncRun = function (func_text, timeout)
 	if OGLHook_Utils.AllocateRegister(run_label, 16384, run_text) then
 		if not debug_isDebugging() then
 			OGLHook_Commands._SyncWait(timeout)
-		    -- OGLHook_Utils.DeallocateRegister(run_label)
+		    OGLHook_Utils.DeallocateRegister(run_label)
 		end
 
 		return true

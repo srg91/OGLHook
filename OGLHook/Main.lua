@@ -349,14 +349,9 @@ local function OGLHook_Init(...)
 	OGLHook_Commands.PutLabel('initialized')
 	self._initialization_part = OGLHook_Commands.Flush()
 
-	-- OGLHook_ClearHook(self)
 	if not OGLHook_Update() then
 		return false
 	end
-	-- autoAssemble([[
-	-- 	OPENGL32.wglSwapBuffers:
-	-- 	jmp oglh_hook_code
-	-- ]])
 
 	return true
 end
@@ -393,6 +388,15 @@ local function OGLHook_Destroy(...)
 	end
 end
 
+
+function OGLHook_isActive(self)
+	local init_addr = OGLHook_Utils.getAddressSilent('oglh_initialized')
+	if init_addr == 0 then
+		return false
+	end
+
+	return readBytes(init_addr, 1, false) == 1
+end
 
 -- Public --
 function OGLHook_SimpleOrtho(x, y, width, height, znear, zfar)
@@ -474,6 +478,8 @@ function OGLHook_Create(onInit)
 
 		generateFontMap = OGLHook_Fonts.generateFontMap,
 		createTextContainer = OGLHook_Sprites.TextContainer,
+
+		isActive = OGLHook_isActive,
 	}
 
 	if not OGL_HOOK:init() then

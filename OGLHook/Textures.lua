@@ -17,11 +17,12 @@ OGLHook_Textures.InitLoadTextures = function()
 		return true
 	end
 
-	if OGLHook_Utils.getAddressSilent('windowscodecs.dll') == 0 then
-  		if not injectDLL('windowscodecs.dll') then
-    		OGLHook_Errors.setError(OGLHook_Errors.FAIL_TO_LOAD_DLL)
-    		return false
-  		end
+	local codecs_dll = 'windowscodecs.dll'
+	if OGLHook_Utils.getAddressSilent(codecs_dll) == 0 then
+		if not injectDLL(codecs_dll) then
+			OGLHook_Errors.raiseError('Cannot load DLL "%s"', codecs_dll)
+			return false
+		end
 	end
 
 	local guids = {
