@@ -349,9 +349,14 @@ local function OGLHook_Init(...)
 	OGLHook_Commands.PutLabel('initialized')
 	self._initialization_part = OGLHook_Commands.Flush()
 
+	-- OGLHook_ClearHook(self)
 	if not OGLHook_Update() then
 		return false
 	end
+	-- autoAssemble([[
+	-- 	OPENGL32.wglSwapBuffers:
+	-- 	jmp oglh_hook_code
+	-- ]])
 
 	return true
 end

@@ -1,32 +1,14 @@
-OGLHook_Errors = {
-	LAST = nil,
-
-	--Commnon
-	INCOMPATIBLE_PARAMS = -100,
-	NOT_ALL_PARAMS = -101,
-
-    -- Textures
-	FAIL_TO_LOAD_DLL = -1000,
-
-	-- Utils
-	ADDRESS_NOT_FOUND = -1100,
-	LOCK_REGISTER_ERROR = -1101,
-	UNLOCK_REGISTER_ERROR = -1102,
-	ALLOCATE_REGISTER_ERROR = -1103,
-	DEALLOCATE_REGISTER_ERROR = -1104,
-}
+OGLHook_Errors = {}
 
 
-OGLHook_Errors.setError = function(error_code)
-	OGLHook_Errors.LAST = error_code
+OGLHook_Errors.raiseError = function (message, ...)
+	error(string.format(message, ...), 2)
 end
 
 
-OGLHook_Errors.clearError = function()
-	OGLHook_Errors.LAST = nil
-end
+OGLHook_Errors.raiseWarning = function (message, ...)
+	local warn_message = string.format(message, ...)
+	local warn_text = debug.traceback(warn_message, 2)
 
-
-OGLHook_Errors.getLastError = function()
-	return OGLHook_Errors.LAST
+	print(string.gsub(warn_text, '\n', '\r\n'))
 end
